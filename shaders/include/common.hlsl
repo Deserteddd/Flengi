@@ -14,4 +14,8 @@ cbuffer PointLight : register(b0, space3) {
     float3 viewPosition;
 };
 
+// cbuffer DirLight : register(b0, space3) {
+
+// }
+
 #endif

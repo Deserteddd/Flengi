@@ -1,6 +1,5 @@
 package obj_viewer
 
-import "core:fmt"
 import "core:reflect"
 import "core:mem"
 import "core:math/linalg"
@@ -18,6 +17,13 @@ PointLight :: struct {
     power:    f32,
     color:    vec3,
     _:        f32
+}
+
+SpotLight :: struct {
+    pos:    vec3,
+    _:      f32,
+    angle:  vec2,
+    _2:     vec2,
 }
 
 FragUBOGlobal :: struct {
@@ -40,6 +46,19 @@ VertUBOLocal :: struct {
     normal_mat: mat4
 }
 
+Pipeline :: enum {
+    NONE,
+    OBJ,
+    AABB,
+    SKYBOX,
+    QUAD,
+    PLANE,
+    SPRITESHEET,
+    SHADOW,
+    CAMERA,
+
+}
+
 Frame :: struct {
     cmd_buff:           ^sdl.GPUCommandBuffer,
     swapchain:          ^sdl.GPUTexture,
@@ -48,6 +67,27 @@ Frame :: struct {
     vert_ubo_global:    VertUBOGlobal,
     frag_ubo_global:    FragUBOGlobal,
     frustum_planes:     [6]vec4,
+}
+
+Camera :: struct {
+    position:   vec3,
+    pitch:      f32,  
+    yaw:        f32,
+    fov:        f32
+}
+
+Renderer :: struct {
+    pipelines:         [Pipeline]^sdl.GPUGraphicsPipeline,
+    bound_pipeline:    Pipeline,
+    fallback_texture: ^sdl.GPUTexture,
+    default_sampler:  ^sdl.GPUSampler,
+    depth_texture:    ^sdl.GPUTexture,
+    skybox_texture:   ^sdl.GPUTexture,
+    shadow_map:       ^sdl.GPUTexture,
+    p_light:           PointLight,
+    s_light:           SpotLight,
+    crosshair:         Sprite,
+    quad:              Quad,
 }
 
 RND_Init :: proc() -> Renderer {
@@ -92,7 +132,13 @@ RND_Init :: proc() -> Renderer {
         OBJVertex,
         wireframe = true
     )
-    pipelines[.SKYBOX] = create_skybox_pipeline()
+    pipelines[.CAMERA] = create_render_pipeline(
+        "shadow.vert",
+        "shadow.frag",
+        OBJVertex
+    )
+    pipelines[.SHADOW] = build_shadow_pipeline()
+    pipelines[.SKYBOX] = build_skybox_pipeline()
     crosshair = load_sprite("assets/crosshair.png", copy_pass)
     quad = init_quad(copy_pass)
     skybox_texture = load_cubemap_texture(copy_pass, {
@@ -115,10 +161,24 @@ RND_Init :: proc() -> Renderer {
         format = .D32_FLOAT,
         usage = {.SAMPLER, .DEPTH_STENCIL_TARGET}
     })
+    shadow_map = sdl.CreateGPUTexture(g.gpu, {
+        type = .D2,
+        width = u32(width),
+        height = u32(height),
+        layer_count_or_depth = 1,
+        num_levels = 1,
+        format = .D32_FLOAT,
+        usage = {.SAMPLER, .DEPTH_STENCIL_TARGET}
+    })
 
-    light = PointLight {
+    p_light = PointLight {
         color = 1,
         power = 0
+    }
+
+    s_light = SpotLight {
+        pos = {0, -50, 0},
+        angle = {90, 0}
     }
     sdl.EndGPUCopyPass(copy_pass)
     ok = sdl.SubmitGPUCommandBuffer(copy_commands); assert(ok)
@@ -180,42 +240,37 @@ frame_begin :: proc() -> Frame {
     ok := sdl.WaitAndAcquireGPUSwapchainTexture(cmd_buff, g.window, &swapchain, nil, nil)
     assert(swapchain != nil && ok)
     win_size := get_window_size()
-    vert_ubo := get_vertex_ubo_global()
-    frag_ubo := get_fragment_ubo_global()
-    frustum_planes := create_frustum_planes(vert_ubo.vp)
+    
+    camera := g.mode == .PLAY ? g.fps_camera : g.editor.camera
+    proj_matrix := create_proj_matrix(camera)
+    view_matrix := create_view_matrix(camera)
+    vp := proj_matrix * view_matrix
+    frustum_planes := create_frustum_planes(vp)
+
     return Frame {
         cmd_buff,
         swapchain,
         nil,
         win_size,
-        vert_ubo,
-        frag_ubo,
+        VertUBOGlobal {
+            vp = vp,
+            inv_view_mat = linalg.inverse(view_matrix),
+            inv_projection_mat = linalg.inverse(proj_matrix)
+        },
+        FragUBOGlobal {
+            light_pos = g.renderer.p_light.position,
+            light_color = g.renderer.p_light.color,
+            light_intensity = g.renderer.p_light.power,
+            view_pos = camera.position
+        },
         frustum_planes
     }
 }
 
-get_vertex_ubo_global :: proc() -> VertUBOGlobal {
-    proj_matrix := create_proj_matrix()
-    view_matrix := create_view_matrix()
-    return VertUBOGlobal {
-        vp = proj_matrix * view_matrix,
-        inv_view_mat = linalg.inverse(view_matrix),
-        inv_projection_mat = linalg.inverse(proj_matrix)
-    }
-}
 
 frame_submit :: proc(frame: Frame) {
     ok := sdl.SubmitGPUCommandBuffer(frame.cmd_buff)
     assert(ok)
-}
-
-get_fragment_ubo_global :: proc() -> FragUBOGlobal {
-    return FragUBOGlobal {
-        light_pos = g.renderer.light.position,
-        light_color = g.renderer.light.color,
-        light_intensity = g.renderer.light.power,
-        view_pos = get_camera_position()
-    }
 }
 
 render_plane :: proc (plane: Plane, frame: Frame) {
@@ -236,9 +291,10 @@ render_plane :: proc (plane: Plane, frame: Frame) {
     sdl.DrawGPUIndexedPrimitives(frame.render_pass, plane.num_indices, 1, 0, 0, 0)
 }
 
-begin_3d :: proc(frame: ^Frame) {
+begin_3d_renderpass :: proc(frame: ^Frame) {
     assert(frame.cmd_buff != nil)
     assert(frame.swapchain != nil)
+    assert(frame.render_pass == nil)
     color_target := sdl.GPUColorTargetInfo {
         texture = frame.swapchain,
         load_op = .CLEAR,
@@ -261,7 +317,7 @@ begin_3d :: proc(frame: ^Frame) {
     sdl.PushGPUFragmentUniformData(frame.cmd_buff, 0, &frame.frag_ubo_global, size_of(FragUBOGlobal))
 }
 
-submit_3d :: proc(frame: ^Frame) {
+submit_3d_renderpass :: proc(frame: ^Frame) {
     sdl.EndGPURenderPass(frame.render_pass)
     frame.render_pass = nil
 }
@@ -287,6 +343,70 @@ draw_active_aabb :: proc(scene: Scene, frame: Frame) {
     }
 }
 
+shadow_pass :: proc(scene: Scene, frame: Frame) {
+    assert(frame.cmd_buff  != nil)
+    assert(frame.swapchain != nil)
+    assert(frame.render_pass == nil)
+
+    frame := frame
+    color_target := sdl.GPUColorTargetInfo {
+        texture = frame.swapchain,
+        load_op = .CLEAR,
+        store_op = .STORE,
+        clear_color = 0,
+    }
+    depth_target_info := sdl.GPUDepthStencilTargetInfo {
+        texture = g.renderer.depth_texture,
+        clear_depth = 1,
+        load_op = .CLEAR,
+        store_op = .STORE,
+        stencil_load_op = .CLEAR,
+        stencil_store_op = .STORE,
+        cycle = true,
+        clear_stencil = 1,
+    }
+
+    frame.render_pass = sdl.BeginGPURenderPass(frame.cmd_buff, &color_target, 1, &depth_target_info)
+    assert(frame.render_pass != nil)
+    defer {
+        sdl.EndGPURenderPass(frame.render_pass)
+        frame.render_pass = nil
+    }
+
+    win_size := get_window_size()
+    aspect := win_size.x / win_size.y
+
+    pitch_matrix    := linalg.matrix4_rotate_f32(to_radians(g.renderer.s_light.angle.x), {1, 0, 0})
+    yaw_matrix      := linalg.matrix4_rotate_f32(to_radians(g.renderer.s_light.angle.y), {0, 1, 0})
+    position_matrix := linalg.matrix4_translate_f32(g.renderer.s_light.pos)
+    view            := pitch_matrix * yaw_matrix * position_matrix
+    proj            := linalg.matrix4_infinite_perspective_f32(to_radians(90), aspect, 0.01)
+    vp              := proj * view
+
+    sdl.PushGPUVertexUniformData(frame.cmd_buff, 0, &vp, size_of(mat4))
+
+    bind_pipeline(frame, .SHADOW)
+    for &model in scene.models {
+            bindings: [1]sdl.GPUBufferBinding = {{buffer = model.vbo}}
+            sdl.BindGPUVertexBuffers(frame.render_pass, 0, &bindings[0], 1)
+            for entity in scene.entities {
+                if &model != entity.model do continue
+                if !is_visible(entity, frame.frustum_planes) do continue
+
+                model_matrix := linalg.matrix4_from_trs_f32(
+                    entity.transform.translation, 
+                    entity.transform.rotation,
+                    entity.transform.scale
+                )
+                sdl.PushGPUVertexUniformData(frame.cmd_buff, 1, &model_matrix, size_of(mat4))
+                g.debug_info.draw_call_count += 1
+                sdl.DrawGPUPrimitives(frame.render_pass, model.num_vertices, 1, 0, 0)           
+            }
+        }
+
+
+}
+
 render_3D :: proc(scene: Scene, frame: Frame) {
     assert(frame.cmd_buff  != nil)
     assert(frame.swapchain != nil)
@@ -303,7 +423,7 @@ render_3D :: proc(scene: Scene, frame: Frame) {
         sdl.BindGPUVertexBuffers(frame.render_pass, 0, &bindings[0], 1)
         sdl.BindGPUFragmentStorageBuffers(frame.render_pass, 0, &model.material_buffer, 1)
         tex_bindings: [9]sdl.GPUTextureSamplerBinding
-        for tex, i in 0..<8 {
+        for i in 0..<8 {
             tex_bindings[i] = len(model.textures) > i ? {
                 texture = model.textures[i].texture, sampler = g.renderer.default_sampler
             } : {
@@ -347,26 +467,20 @@ render_3D :: proc(scene: Scene, frame: Frame) {
 
 }
 
-get_camera_position :: proc() -> (camera_position: vec3) {
-    camera_position = -g.player.position
-    camera_position.y -= 2
-    return
-}
-
-create_view_matrix :: proc() -> linalg.Matrix4f32 {
-    using linalg, g.player
-    pitch_matrix := matrix4_rotate_f32(to_radians(rotation.x), {1, 0, 0})
-    yaw_matrix := matrix4_rotate_f32(to_radians(rotation.y), {0, 1, 0})
-    position_matrix := matrix4_translate_f32(get_camera_position())
+create_view_matrix :: proc(camera: Camera) -> linalg.Matrix4f32 {
+    using linalg
+    pitch_matrix := matrix4_rotate_f32(to_radians(camera.pitch), {1, 0, 0})
+    yaw_matrix := matrix4_rotate_f32(to_radians(camera.yaw), {0, 1, 0})
+    position_matrix := inverse(matrix4_translate_f32(camera.position))
     return pitch_matrix * yaw_matrix * position_matrix
 }
 
-create_proj_matrix :: proc() -> mat4 {
+create_proj_matrix :: proc(camera: Camera, loc := #caller_location) -> mat4 {
     using linalg
     win_size := get_window_size()
     aspect := win_size.x / win_size.y
     return matrix4_perspective_f32(
-        to_radians(g.fov), 
+        to_radians(camera.fov), 
         aspect, 
         0.01, 
         1000
@@ -502,7 +616,11 @@ load_shader :: proc(shaderfile: string) -> ^sdl.GPUShader {
 
     shaderfile_path := filepath.join({"shaders", "out", shaderfile})
     filename := strings.concatenate({shaderfile_path, ".spv"}, context.temp_allocator)
-    code, ok := os.read_entire_file_from_filename(filename, context.temp_allocator); assert(ok)
+    code, ok := os.read_entire_file_from_filename(filename, context.temp_allocator)
+    if !ok {
+        log.errorf("Failed to load shader \"%v\"", shaderfile)
+        return nil
+    }
     info := load_shader_info(shaderfile_path)
     return sdl.CreateGPUShader(g.gpu, {
         code_size = len(code),
@@ -532,7 +650,62 @@ load_shader_info :: proc(shaderfile: string) -> Shader_Info {
     return result
 }
 
-create_skybox_pipeline :: proc() -> ^sdl.GPUGraphicsPipeline {
+build_shadow_pipeline :: proc() -> ^sdl.GPUGraphicsPipeline {
+    vert_shader := load_shader("shadow.vert"); defer sdl.ReleaseGPUShader(g.gpu, vert_shader)
+    frag_shader := load_shader("shadow.frag"); defer sdl.ReleaseGPUShader(g.gpu, frag_shader)
+    vb_descriptions: [1]sdl.GPUVertexBufferDescription
+    vb_descriptions = {
+        sdl.GPUVertexBufferDescription {
+            slot = u32(0),
+            pitch = size_of(OBJVertex),
+            input_rate = .VERTEX,
+            instance_step_rate = 0
+        },
+    }  
+
+    vb_attribute_data := get_vb_layout(OBJVertex)
+    vb_attributes := make([]sdl.GPUVertexAttribute, len(vb_attribute_data), context.temp_allocator)
+    offset: u32
+    for info, i in vb_attribute_data {
+        vb_attributes[i] = sdl.GPUVertexAttribute {
+            location = u32(i),
+            buffer_slot = 0,
+            format = info.format,
+            offset = offset
+        }
+        offset += info.size
+    }
+    shadow_pipeline := sdl.CreateGPUGraphicsPipeline(g.gpu, {
+        vertex_shader = vert_shader,
+        fragment_shader = frag_shader,
+        primitive_type = .TRIANGLELIST,
+        vertex_input_state = {
+            vertex_buffer_descriptions = &vb_descriptions[0],
+            num_vertex_buffers = 1,
+            vertex_attributes = &vb_attributes[0],
+            num_vertex_attributes = u32(len(vb_attributes))
+        },
+        target_info = {
+            has_depth_stencil_target = true,
+            depth_stencil_format = .D32_FLOAT
+        },
+        rasterizer_state = {
+            fill_mode = .FILL,
+            cull_mode = .BACK,
+            // enable_depth_bias = true,
+            // depth_bias_constant_factor = 1.25,
+            // depth_bias_slope_factor = 1.75,
+        },
+        depth_stencil_state = {
+            enable_depth_test = true,
+            enable_depth_write = true,
+            compare_op = .LESS,
+        }
+    })
+    return shadow_pipeline
+}
+
+build_skybox_pipeline :: proc() -> ^sdl.GPUGraphicsPipeline {
     vert_shader := load_shader("skybox.vert"); defer sdl.ReleaseGPUShader(g.gpu, vert_shader)
     frag_shader := load_shader("skybox.frag"); defer sdl.ReleaseGPUShader(g.gpu, frag_shader)
     format := sdl.GetGPUSwapchainTextureFormat(g.gpu, g.window)

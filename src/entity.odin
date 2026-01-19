@@ -25,7 +25,7 @@ spawn :: proc(scene: ^Scene, under_player: bool) -> (id: EntityID, ok: bool) {
             set_entity_transform(scene, id, get_player_translation().x)
         } else {
             screen_size := get_window_size()
-            origin, dir := ray_from_screen(screen_size/2, screen_size)
+            origin, dir := ray_from_screen(g.fps_camera, screen_size/2, screen_size)
             set_entity_transform(scene, id, origin + 10*dir)
         }
         ok = true

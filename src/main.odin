@@ -53,29 +53,32 @@ init :: proc() {
     init_editor({1280, 720})
 
     g.player = create_player()
-    // g.ocean  = load_height_map("")
+    g.fps_camera.fov = 90
+    g.ocean  = load_height_map("")
 }
 
 run :: proc(scene: ^Scene) {
+    toggle: bool
     main_loop: for {
         defer {
             free_all(context.temp_allocator)
             g.mb_click = .NONE
             g.editor.tab_flag = false
+            g.frame += 1
         }
         now := time.now()
         key_presses: KeyboardEvents
         ev: sdl.Event
         for sdl.PollEvent(&ev) {
-            if !(ev.type == .KEY_DOWN && (ev.key.repeat || ev.key.scancode == .TAB)) {
-                im_sdl.ProcessEvent(&ev)
-            }
+            if !(ev.type == .KEY_DOWN && (ev.key.repeat || ev.key.scancode == .TAB)) do g.editor.tab_flag = true
+            im_sdl.ProcessEvent(&ev)
             #partial switch ev.type {
                 case .QUIT: 
                     break main_loop
                 case .KEY_DOWN: 
                     #partial switch ev.key.scancode {
                         case .F11: toggle_fullscreen()
+                        case .F1:  toggle = !toggle
                     }
                     sa.append(&key_presses, KeyEvent{ev.key.scancode, ev.key.mod, ev.key.repeat})
                 case .MOUSE_BUTTON_DOWN: switch ev.button.button {
@@ -94,10 +97,15 @@ run :: proc(scene: ^Scene) {
         frame := frame_begin()
         defer frame_submit(frame)
 
-        begin_3d(&frame)
-        render_3D(scene^, frame)
-        render_plane(g.ocean, frame)
-        submit_3d(&frame)
+
+        if toggle {
+            shadow_pass(scene^, frame)
+        } else {
+            begin_3d_renderpass(&frame)
+            render_3D(scene^, frame)
+            render_plane(g.ocean, frame)
+            submit_3d_renderpass(&frame)
+        }
 
         begin_2d(&frame)
         if g.mode == .EDIT {
@@ -149,14 +157,10 @@ update_game :: proc(scene: ^Scene, keys: KeyboardEvents) -> (exit: bool) {
     dt := f32(new_ticks - g.last_ticks) / 1000
     g.last_ticks = new_ticks
     update_player(scene^, dt)
-    update_camera()
+    update_player_camera(&g.fps_camera)
 
     g.debug_info.player_speed = linalg.length(g.player.speed)
-    g.renderer.light.position = {
-        g.player.position.x,
-        g.player.bbox.max.y,
-        g.player.position.z
-    }
+    g.renderer.p_light.position = g.player.position + {0, 1, 0}
     return
 }
 

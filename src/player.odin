@@ -63,7 +63,7 @@ update_player :: proc(scene: Scene, dt: f32) {
     found_collision: bool
     
     win_size := get_window_size()
-    ray_origin, ray_dir := ray_from_screen(win_size/2, win_size)
+    ray_origin, ray_dir := ray_from_screen(g.fps_camera, win_size/2, win_size)
     closest_hit: f32 = math.F32_MAX
     closest_entity: EntityID = -1
 
@@ -117,12 +117,16 @@ update_player :: proc(scene: Scene, dt: f32) {
     }
 }
 
-update_camera :: proc() {
+update_player_camera :: proc(camera: ^Camera) {
     x, y: f32
     _ = sdl.GetRelativeMouseState(&x, &y)
     g.player.rotation.y += x * 0.03
     g.player.rotation.x = math.min(g.player.rotation.x + y*0.03, 90)
     if g.player.rotation.x < -90 do g.player.rotation.x = -90
+    camera.pitch = g.player.rotation.x
+    camera.yaw = g.player.rotation.y
+    camera.position = g.player.position
+    camera.position.y += 2
 }
 
 player_wish_speed :: proc() -> vec3 {

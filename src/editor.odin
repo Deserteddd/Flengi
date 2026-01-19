@@ -10,7 +10,10 @@ import im "shared:imgui"
 import im_sdl "shared:imgui/imgui_impl_sdl3"
 import im_sdlgpu "shared:imgui/imgui_impl_sdlgpu3"
 
+NONE :: EntityID(0)
+
 Editor :: struct {
+    camera:          Camera,
     selected_entity: EntityID,
     dragging:        bool,
     drag_position:   vec2,
@@ -28,7 +31,27 @@ Panel :: struct {
     rect: Rect,
 }
 
+get_entity_ptr :: proc(scene: ^Scene, id: EntityID) -> ^Entity {
+    for &e in scene.entities {
+        if e.id == id do return &e
+    }
+    return nil
+}
+
+selected_entity :: proc(scene: ^Scene) -> ^Entity {
+    for &e in scene.entities {
+        if e.id == g.editor.selected_entity do return &e
+    }
+    return nil
+}
+
+selected_entity_id :: proc(scene: ^Scene) -> EntityID {
+    if a := selected_entity(scene); a != nil do return a.id
+    return 0
+}
+
 update_editor :: proc(scene: ^Scene, keys: KeyboardEvents) -> (exit: bool) {
+    // g.editor.camera = g.fps_camera
     for k in keys.data {
         #partial switch k.key {
             case .S:
@@ -52,7 +75,7 @@ update_editor :: proc(scene: ^Scene, keys: KeyboardEvents) -> (exit: bool) {
         _ = sdl.GetMouseState(&m_pos.x, &m_pos.y)
         if !click(m_pos) {
             win_size := get_window_size()
-            ray_origin, ray_dir := ray_from_screen(m_pos, win_size)
+            ray_origin, ray_dir := ray_from_screen(g.editor.camera, m_pos, win_size)
             closest_hit: f32 = max(f32)
             closest_entity: EntityID = -1
             for &entity in scene.entities {
@@ -107,12 +130,12 @@ init_editor :: proc(winsize: [2]i32) {
     panels[.RIGHT] = {
         rect = {f32(winsize.x)-300, 0, 300, f32(winsize.y)},
     }
+    camera.fov = 90
 
 }
 
 start_dragging :: proc(loc := #caller_location) {
     if g.editor.dragging do return
-
     x, y: f32
     flags := sdl.GetMouseState(&x, &y)
     if flags == {} do return
@@ -139,6 +162,7 @@ draw_editor :: proc(frame: Frame) {
         draw_rect(panel.rect, frame)
     }
 }
+
 draw_imgui :: proc(scene: ^Scene, frame: Frame) {
     im_sdlgpu.NewFrame()
     im_sdl.NewFrame()
@@ -154,12 +178,18 @@ draw_imgui :: proc(scene: ^Scene, frame: Frame) {
                 defer im.EndTabBar()
 
                 // --- General Tab ---
-                if im.BeginTabItem("General") {
+                if im.BeginTabItem("Point light") {
                     defer im.EndTabItem()
                     if im.DragFloat("FOV", &g.fov, 1, 50, 140) do start_dragging()
                     im.LabelText("", "Point Light")
-                    if im.DragFloat("intensity", &g.renderer.light.power, 1, 0, 10000) do start_dragging()
-                    im.ColorPicker3("color", &g.renderer.light.color, {.InputRGB})
+                    if im.DragFloat("intensity", &g.renderer.p_light.power, 1, 0, 10000) do start_dragging()
+                    im.ColorPicker3("color", &g.renderer.p_light.color, {.InputRGB})
+                }
+                if im.BeginTabItem("Spot light") {
+                    defer im.EndTabItem()
+                    if im.DragFloat("Pitch", &g.renderer.s_light.angle.x, 0.1) do start_dragging()
+                    if im.DragFloat("Yaw",   &g.renderer.s_light.angle.y, 0.1) do start_dragging()
+                    if im.DragFloat3("Position", &g.renderer.s_light.pos) do start_dragging()
                 }
             }
         }
@@ -170,58 +200,59 @@ draw_imgui :: proc(scene: ^Scene, frame: Frame) {
             im.SetWindowPos({f32(w)-rect.w, 0})
             im.SetWindowSize({rect.w, rect.h})
 
-            selected_entity_index := -1
-            if im.BeginListBox("Entities",) {
+            selected_index := -1
+            if im.BeginListBox("Entities", {rect.w-rect.w/10, rect.h/8}) {
                 for e, i in scene.entities {
                     im.PushIDInt(i32(e.id))
                     name_cstr := strings.unsafe_string_to_cstring(e.name)
-                    selected := g.editor.selected_entity == e.id
+                    selected := e.id == g.editor.selected_entity
                     if im.Selectable(name_cstr, selected) {
                         g.editor.selected_entity = e.id
                     }
                     if selected {
-                        selected_entity_index = i
-                        if g.editor.tab_flag {
-                            im.ScrollToItem()
-                        }
+                        // im.ScrollToItem()
+                        selected_index = i
                     }
                     im.PopID()
                 }
                 im.EndListBox()
             }
-            if selected_entity_index != -1 {
-                e := &scene.entities[selected_entity_index]
-                im.LabelText("", strings.unsafe_string_to_cstring(e.name))
-                if im.DragFloat3("Position", &e.transform.translation, 0.01) do start_dragging()
-                if im.DragFloat3("Scale",    &e.transform.scale, 0.01) do start_dragging()
+            if selected_index != -1 && im.BeginChild("Lapsonen") {
+                s := &scene.entities[selected_index]
+                if im.DragFloat3("Position", &s.transform.translation, 0.01) do start_dragging()
+                if im.DragFloat3("Scale",    &s.transform.scale, 0.01) do start_dragging()
                 if im.Button("Delete") {
                     ok := remove_selected_entity(scene)
                     assert(ok)
                 }
                 if im.Button("Duplicate") {
-                    id, ok := entity_from_model(scene, e.model.name)
+                    id, ok := entity_from_model(scene, s.model.name)
                     assert(ok)
-                    offset := e.model.aabbs[0].min * 2 * e.transform.scale
-                    new_position := e.transform.translation + {0, offset.y, 0}
-                    set_entity_transform(scene, id, new_position, e.transform.scale)
+                    offset := s.model.aabbs[0].min * 2 * s.transform.scale
+                    new_position := s.transform.translation + {offset.x, 0, 0}
+                    set_entity_transform(scene, id, new_position, s.transform.scale)
                     g.editor.selected_entity = id
                 }
-                for &axis in e.transform.scale do axis = max(0.01, axis)
+                im.EndChild()
+
+                for &axis in s.transform.scale do axis = max(0.01, axis)
             }
 
         }
     } else if im.Begin("info", nil, {.NoTitleBar, .NoMouseInputs, .NoMove}) {
-        im.SetWindowPos(vec2{f32(w-140), 0})
-        im.SetWindowSize(vec2{140, 0})
+        im.SetWindowPos(vec2{f32(w-200), 0})
+        im.SetWindowSize(vec2{200, 0})
         rendered := i32(g.debug_info.draw_call_count)
         im.SetNextItemWidth(50)
         im.DragInt("Draw calls", &rendered, flags = {.NoInput})
         im.SetNextItemWidth(50)
         im.LabelText("", "Player")
         im.DragFloat("Vel", &g.debug_info.player_speed, flags = {.NoInput})
-        im.DragFloat("X", &g.player.position.x)
-        im.DragFloat("Y", &g.player.position.y)
-        im.DragFloat("Z", &g.player.position.z)
+        im.DragFloat3("pos", &g.player.position)
+        im.LabelText("", "Camera")
+        im.DragFloat3("pos", &g.fps_camera.position)
+        im.DragFloat("pitch", &g.fps_camera.pitch)
+        im.DragFloat("yaw", &g.fps_camera.yaw)
         im.End()
     }
     im.Render()

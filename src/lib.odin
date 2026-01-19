@@ -34,10 +34,12 @@ Globals :: struct {
     ui_context: ^im.Context,
     player:      Player,
     editor:      Editor,
+    fps_camera:  Camera,
     debug_info:  DebugInfo,
     renderer:    Renderer,
     ocean:       Plane,
     mb_click:    MouseButton,
+    frame,
     last_ticks:  u64,
     total_time:  f64,
     fov:         f32,
@@ -51,19 +53,10 @@ g: Globals = {
     fov = 90
 }
 
-Pipeline :: enum {
-    NONE,
-    OBJ,
-    AABB,
-    SKYBOX,
-    QUAD,
-    PLANE,
-    SPRITESHEET,
-}
 
 Mode :: enum {
     PLAY,
-    EDIT
+    EDIT,
 }
 
 TRANSFORM_IDENTITY :: Transform {
@@ -94,17 +87,6 @@ DebugInfo :: struct {
     fps:                u32,
 }
 
-Renderer :: struct {
-    pipelines:         [Pipeline]^sdl.GPUGraphicsPipeline,
-    bound_pipeline:    Pipeline,
-    fallback_texture: ^sdl.GPUTexture,
-    default_sampler:  ^sdl.GPUSampler,
-    depth_texture:    ^sdl.GPUTexture,
-    skybox_texture:   ^sdl.GPUTexture,
-    light:             PointLight,
-    crosshair:         Sprite,
-    quad:              Quad,
-}
 
 Scene :: struct {
     models:       [dynamic]OBJModel,
@@ -230,7 +212,8 @@ load_height_map :: proc(path: string) -> Plane {
 }
 
 bind_pipeline :: proc(frame: Frame, pipeline: Pipeline, loc := #caller_location) {
-    assert(frame.render_pass != nil)
+    assert(frame.render_pass != nil, loc = loc)
+    if g.frame == 1 do log.debugf("Binding \"%v\" -pipeline", pipeline)
     if pipeline == g.renderer.bound_pipeline {
         log.warnf("%v: attempted to bind already bound pipeline: %v", loc, pipeline)
         return
