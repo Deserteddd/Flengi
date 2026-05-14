@@ -7,6 +7,7 @@ import "core:time"
 import sdl "vendor:sdl3"
 import im_sdl "shared:imgui/imgui_impl_sdl3"
 
+// TEST
 VSYNC :: true
 default_context: runtime.Context
 
