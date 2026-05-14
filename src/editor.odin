@@ -184,12 +184,6 @@ draw_imgui :: proc(scene: ^Scene, frame: Frame) {
                     if im.DragFloat("intensity", &g.renderer.p_light.power, 1, 0, 10000) do start_dragging()
                     im.ColorPicker3("color", &g.renderer.p_light.color, {.InputRGB})
                 }
-                if im.BeginTabItem("Spot light") {
-                    defer im.EndTabItem()
-                    if im.DragFloat("Pitch", &g.renderer.s_light.angle.x, 0.1) do start_dragging()
-                    if im.DragFloat("Yaw",   &g.renderer.s_light.angle.y, 0.1) do start_dragging()
-                    if im.DragFloat3("Position", &g.renderer.s_light.pos) do start_dragging()
-                }
             }
         }
         if im.Begin("entities", nil, {.NoTitleBar, .NoResize, .NoMove}) {

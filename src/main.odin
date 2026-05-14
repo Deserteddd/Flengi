@@ -97,14 +97,10 @@ run :: proc(scene: ^Scene) {
         defer frame_submit(frame)
 
 
-        if toggle {
-            shadow_pass(scene^, frame)
-        } else {
-            begin_3d_renderpass(&frame)
-            render_3D(scene^, frame)
-            render_plane(g.ocean, frame)
-            submit_3d_renderpass(&frame)
-        }
+        begin_3d_renderpass(&frame)
+        render_3D(scene^, frame)
+        render_plane(g.ocean, frame)
+        submit_3d_renderpass(&frame)
 
         begin_2d(&frame)
         if g.mode == .EDIT {

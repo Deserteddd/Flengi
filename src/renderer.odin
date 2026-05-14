@@ -19,12 +19,6 @@ PointLight :: struct {
     _:        f32
 }
 
-SpotLight :: struct {
-    pos:    vec3,
-    _:      f32,
-    angle:  vec2,
-    _2:     vec2,
-}
 
 FragUBOGlobal :: struct {
     light_pos: vec3,
@@ -32,7 +26,6 @@ FragUBOGlobal :: struct {
     light_color: vec3,
     light_intensity: f32,
     view_pos: vec3,
-    _: f32
 }
 
 VertUBOGlobal :: struct {
@@ -53,9 +46,6 @@ Pipeline :: enum {
     SKYBOX,
     QUAD,
     PLANE,
-    SPRITESHEET,
-    SHADOW,
-    CAMERA,
 }
 
 Frame :: struct {
@@ -82,9 +72,7 @@ Renderer :: struct {
     default_sampler:  ^sdl.GPUSampler,
     depth_texture:    ^sdl.GPUTexture,
     skybox_texture:   ^sdl.GPUTexture,
-    shadow_map:       ^sdl.GPUTexture,
     p_light:           PointLight,
-    s_light:           SpotLight,
     crosshair:         Sprite,
     quad:              Quad,
 }
@@ -106,12 +94,6 @@ RND_Init :: proc() {
         Vertex2D,
         false,
     )
-    r.pipelines[.SPRITESHEET] = create_render_pipeline(
-        "spritesheet.vert",
-        "spritesheet.frag",
-        Vertex2D,
-        false,
-    )
     r.pipelines[.OBJ] = create_render_pipeline(
         "shader.vert",
         "shader.frag",
@@ -130,12 +112,6 @@ RND_Init :: proc() {
         OBJVertex,
         wireframe = true
     )
-    r.pipelines[.CAMERA] = create_render_pipeline(
-        "shadow.vert",
-        "shadow.frag",
-        OBJVertex
-    )
-    r.pipelines[.SHADOW] = build_shadow_pipeline()
     r.pipelines[.SKYBOX] = build_skybox_pipeline()
     r.crosshair = load_sprite("assets/crosshair.png", copy_pass)
     r.quad = init_quad(copy_pass)
@@ -160,25 +136,12 @@ RND_Init :: proc() {
         usage = {.SAMPLER, .DEPTH_STENCIL_TARGET}
     })
 
-    r.shadow_map = sdl.CreateGPUTexture(g.gpu, {
-        type = .D2,
-        width = u32(width),
-        height = u32(height),
-        layer_count_or_depth = 1,
-        num_levels = 1,
-        format = .R32_FLOAT,
-        usage = {.COLOR_TARGET}
-    })
 
     r.p_light = PointLight {
         color = 1,
         power = 0
     }
 
-    r.s_light = SpotLight {
-        pos = {0, 50, 0},
-        angle = {90, 0}
-    }
     sdl.EndGPUCopyPass(copy_pass)
     ok = sdl.SubmitGPUCommandBuffer(copy_commands); assert(ok)
 }
@@ -342,69 +305,7 @@ draw_active_aabb :: proc(scene: Scene, frame: Frame) {
     }
 }
 
-shadow_pass :: proc(scene: Scene, frame: Frame) {
-    assert(frame.cmd_buff  != nil)
-    assert(frame.swapchain != nil)
-    assert(frame.render_pass == nil)
 
-    frame := frame
-    color_target := sdl.GPUColorTargetInfo {
-        texture = g.renderer.shadow_map,
-        load_op = .CLEAR,
-        store_op = .STORE,
-        clear_color = 0,
-    }
-    depth_target_info := sdl.GPUDepthStencilTargetInfo {
-        texture = g.renderer.depth_texture,
-        clear_depth = 1,
-        load_op = .CLEAR,
-        store_op = .STORE,
-        stencil_load_op = .CLEAR,
-        stencil_store_op = .STORE,
-        cycle = true,
-        clear_stencil = 1,
-    }
-
-    frame.render_pass = sdl.BeginGPURenderPass(frame.cmd_buff, &color_target, 1, nil)
-    assert(frame.render_pass != nil)
-    defer {
-        sdl.EndGPURenderPass(frame.render_pass)
-        frame.render_pass = nil
-    }
-
-    win_size := get_window_size()
-    aspect := win_size.x / win_size.y
-
-    pitch_matrix    := lg.matrix4_rotate_f32(to_radians(g.renderer.s_light.angle.x), {1, 0, 0})
-    yaw_matrix      := lg.matrix4_rotate_f32(to_radians(g.renderer.s_light.angle.y), {0, 1, 0})
-    position_matrix := lg.matrix4_translate_f32(g.renderer.s_light.pos)
-    view            := pitch_matrix * yaw_matrix * position_matrix
-    proj            := lg.matrix4_infinite_perspective_f32(to_radians(90), aspect, 0.01)
-    vp              := proj * view
-
-    sdl.PushGPUVertexUniformData(frame.cmd_buff, 0, &vp, size_of(mat4))
-
-    bind_pipeline(frame, .SHADOW)
-    for &model in scene.models {
-            bindings: [1]sdl.GPUBufferBinding = {{buffer = model.vbo}}
-            sdl.BindGPUVertexBuffers(frame.render_pass, 0, &bindings[0], 1)
-            for entity in scene.entities {
-                if &model != entity.model do continue
-                if !is_visible(entity, frame.frustum_planes) do continue
-
-                model_matrix := lg.matrix4_from_trs_f32(
-                    entity.transform.translation, 
-                    entity.transform.rotation,
-                    entity.transform.scale
-                )
-                sdl.PushGPUVertexUniformData(frame.cmd_buff, 1, &model_matrix, size_of(mat4))
-                g.debug_info.draw_call_count += 1
-                sdl.DrawGPUPrimitives(frame.render_pass, model.num_vertices, 1, 0, 0)           
-            }
-        }
-
-
-}
 
 render_3D :: proc(scene: Scene, frame: Frame) {
     assert(frame.cmd_buff  != nil)
