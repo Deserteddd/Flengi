@@ -50,8 +50,8 @@ write_save_file :: proc(scene: Scene, loc := #caller_location) {
         allocator = context.temp_allocator
     )
     assert(err == nil)
-    ok := os.write_entire_file("savefile.json", json_data)
-    assert(ok)
+    write_err := os.write_entire_file("savefile.json", json_data)
+    assert(err == nil)
     fmt.printfln("%v: Save file writing successful", loc)
 }
 
@@ -177,12 +177,12 @@ load_scene :: proc(savefile_path: string) -> Scene {
 
 load_save_file :: proc(path: string) -> SaveFile {
     json_filename := strings.concatenate({path, ".json"}, context.temp_allocator)
-    json_data, ok := os.read_entire_file_from_filename(json_filename, context.temp_allocator)
-    assert(ok)
+    json_data, err := os.read_entire_file_from_path(json_filename, context.temp_allocator)
+    assert(err == nil)
 
     result: SaveFile
-    err := json.unmarshal(json_data, &result)
-    assert(err == nil)
+    json_err := json.unmarshal(json_data, &result)
+    assert(json_err == nil)
 
     return result
 }

@@ -40,14 +40,13 @@ create_frustum_planes :: proc "contextless" (vp: mat4) -> [6]vec4 {
     }
 }
 
-aabb_intersects_frustum :: proc(frustum_planes: [6]vec4, aabb: AABB) -> bool #no_bounds_check {
-    using aabb
+aabb_intersects_frustum :: #force_inline proc(frustum_planes: [6]vec4, aabb: AABB) -> bool #no_bounds_check {
     p_vertex: vec3
     for p in frustum_planes {
         p_vertex = {
-            f32(cast(byte)bool(p.x >= 0))*(max.x)+f32(cast(byte)bool(p.x<0))*min.x,
-            f32(cast(byte)bool(p.y >= 0))*(max.y)+f32(cast(byte)bool(p.y<0))*min.y,
-            f32(cast(byte)bool(p.z >= 0))*(max.z)+f32(cast(byte)bool(p.z<0))*min.z,
+            f32(cast(byte)bool(p.x >= 0))*(aabb.max.x)+f32(cast(byte)bool(p.x<0))*aabb.min.x,
+            f32(cast(byte)bool(p.y >= 0))*(aabb.max.y)+f32(cast(byte)bool(p.y<0))*aabb.min.y,
+            f32(cast(byte)bool(p.z >= 0))*(aabb.max.z)+f32(cast(byte)bool(p.z<0))*aabb.min.z,
         }
 
         if linalg.dot(p.xyz, p_vertex) + p.w < 0 {
@@ -120,8 +119,6 @@ ray_from_screen :: proc(
 }
 
 ray_intersect_aabb :: proc(origin: vec3, dir: vec3, box: AABB) -> f32 {
-    using math
-
     inv_dir := 1.0 / dir
     t1 := (box.min.x - origin.x) * inv_dir.x
     t2 := (box.max.x - origin.x) * inv_dir.x

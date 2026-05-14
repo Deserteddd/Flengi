@@ -6,7 +6,6 @@ import "core:log"
 import "base:runtime"
 import "core:time"
 
-import sa "core:container/small_array"
 import im "shared:imgui"
 import sdl "vendor:sdl3"
 
@@ -78,7 +77,8 @@ KeyEvent :: struct {
     repeat: bool,
 }
 
-KeyboardEvents :: sa.Small_Array(64, KeyEvent)
+KeyboardEvents :: [dynamic; 64]KeyEvent
+
 
 DebugInfo :: struct {
     frame_time:         time.Duration,

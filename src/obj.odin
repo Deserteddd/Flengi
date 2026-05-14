@@ -51,7 +51,7 @@ Texture :: struct {
 load_obj_model :: proc(dir_path: string) -> OBJModel {
     log.infof("Loading OBJ: %v", dir_path)
     defer free_all(context.temp_allocator)
-    asset_handle, err := os.open(dir_path, 0, 0); assert(err == nil)
+    asset_handle, err := os.open(dir_path); assert(err == nil)
     dir_split: []string
     dir_split, err = strings.split(dir_path, "/", context.temp_allocator); assert(err == nil)
     asset_dir: []os.File_Info
@@ -96,14 +96,15 @@ load_obj_model :: proc(dir_path: string) -> OBJModel {
         for v in verts do append(&aabb_verts, v)
     }
 
-    len_bytes := u32(
-        len(vertices) * size_of(OBJVertex) + 
-        len(materials) * size_of(GPUMaterial) +
-        len(aabbs) * 24 * size_of(vec3)
+    len_bytes := max(
+        (len(vertices) * size_of(OBJVertex)),
+        (len(materials) * size_of(GPUMaterial)),
+        (len(aabbs) * 24 * size_of(vec3)),
     )
+
     transfer_buffer := sdl.CreateGPUTransferBuffer(g.gpu, {
         usage = .UPLOAD,
-        size  = len_bytes
+        size  = u32(len_bytes)
     }); assert(transfer_buffer != nil)
     defer sdl.ReleaseGPUTransferBuffer(g.gpu, transfer_buffer)
     vbo              := create_buffer_with_data(transfer_buffer, copy_pass, {.VERTEX}, vertices)
@@ -174,7 +175,7 @@ load_obj :: proc(
                     }
                 }
                 for vert in new_verts {
-                    using vert
+                    position := vert.position
                     if (position.x < aabb.min.x) do aabb.min.x = position.x;
                     if (position.y < aabb.min.y) do aabb.min.y = position.y;
                     if (position.z < aabb.min.z) do aabb.min.z = position.z;
@@ -335,14 +336,16 @@ parse_face_data :: proc(line: string) -> [9]u32 {
 
 @(private = "file")
 read_file_to_string :: proc(path: string) -> string {
-    file, err := os.read_entire_file_or_err(path, context.temp_allocator)
-    if err != nil { log.warnf("COULDN'T FIND FILE {}", path); panic("") }
+    file, err := os.read_entire_file_from_path(path, context.temp_allocator)
+    if err != nil do log.errorf("Error reading file '%v'", path, err); 
     file_data := string(file)
     return file_data
 }
 
 aabb_vertices :: proc(bbox: AABB) -> [24]vec3 {
-    using bbox
+    min := bbox.min
+    max := bbox.max
+
     return {
         vec3{min.x, min.y, min.z},
         vec3{max.x, min.y, min.z},

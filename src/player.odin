@@ -1,7 +1,7 @@
 package obj_viewer
 
 import "core:math"
-import "core:math/linalg"
+import lg "core:math/linalg"
 import "core:fmt"
 import sdl "vendor:sdl3"
 
@@ -33,31 +33,31 @@ get_player_translation :: proc() -> [2]vec3 {
 }
 
 update_player :: proc(scene: Scene, dt: f32) {
-    using g.player
-    G: f32 = 25
+    G :: 25
+    p := &g.player
     wishveloc := player_wish_speed()
-    airborne_at_start := airborne
-    if noclip {
-        speed = 0
+    airborne_at_start := p.airborne
+    if p.noclip {
+        p.speed = 0
         delta_pos := wishveloc * dt * 20
-        position += delta_pos
-        bbox.min += delta_pos
-        bbox.max += delta_pos
+        p.position += delta_pos
+        p.bbox.min += delta_pos
+        p.bbox.max += delta_pos
     } else {
-        if wishveloc.y > 0 && !airborne {
-            speed.y = 9
-            airborne = true
-        } else if !airborne {
-            speed += wishveloc
+        if wishveloc.y > 0 && !p.airborne {
+            p.speed.y = 9
+            p.airborne = true
+        } else if !p.airborne {
+            p.speed += wishveloc
         } else {
             air_accelerate(&wishveloc, dt)
-            speed.y -= G * dt
-            speed.y = math.max(speed.y, -20)
+            p.speed.y -= G * dt
+            p.speed.y = math.max(p.speed.y, -20)
         }
-        delta_pos := speed * dt
-        position += delta_pos
-        bbox.min += delta_pos
-        bbox.max += delta_pos
+        delta_pos := p.speed * dt
+        p.position += delta_pos
+        p.bbox.min += delta_pos
+        p.bbox.max += delta_pos
     }
 
     found_collision: bool
@@ -70,22 +70,22 @@ update_player :: proc(scene: Scene, dt: f32) {
     for &entity in scene.entities {
         aabbs := entity_aabbs(entity)
         for aabb in aabbs {
-            if aabbs_collide(bbox, aabb) && !noclip {
+            if aabbs_collide(p.bbox, aabb) && !p.noclip {
                 found_collision = true
-                mtv := resolve_aabb_collision_mtv(bbox, aabb)
+                mtv := resolve_aabb_collision_mtv(p.bbox, aabb)
                 for axis, j in mtv do if axis != 0 {
-                    speed[j] *= 0.9
+                    p.speed[j] *= 0.9
                     if j == 1 { 
                         if axis > 0 { // This means we are standing on a block
-                            airborne = false
+                            p.airborne = false
                         } else {
-                            speed.y = -0.1
+                            p.speed.y = -0.1
                         }
                     }
                 }
-                position += mtv
-                bbox.min += mtv
-                bbox.max += mtv
+                p.position += mtv
+                p.bbox.min += mtv
+                p.bbox.max += mtv
             }
             if g.mb_click == .LEFT {
                 intersection := ray_intersect_aabb(ray_origin, ray_dir, aabb)
@@ -97,14 +97,14 @@ update_player :: proc(scene: Scene, dt: f32) {
 
         }
     }
-    if !noclip {
-        if !found_collision do airborne = true
+    if !p.noclip {
+        if !found_collision do p.airborne = true
 
-        if !airborne_at_start && !airborne {
-            speed *= 0.8
+        if !airborne_at_start && !p.airborne {
+            p.speed *= 0.8
         }
 
-        if linalg.length(speed.xz) > 20 do speed.xz *= 0.9
+        if lg.length(p.speed.xz) > 20 do p.speed.xz *= 0.9
     }
 
     if g.mb_click == .LEFT {
@@ -130,14 +130,13 @@ update_player_camera :: proc(camera: ^Camera) {
 }
 
 player_wish_speed :: proc() -> vec3 {
-    using sdl.Scancode
     key_state := sdl.GetKeyboardState(nil)
     wish_speed: vec3
-
-    u := f32(int(key_state[SPACE]))
-    d := f32(int(key_state[LCTRL]))
-    fb := f32(int(key_state[S])-int(key_state[W]))
-    lr := f32(int(key_state[D])-int(key_state[A]))
+    sc :: sdl.Scancode
+    u := f32(int(key_state[sc.SPACE]))
+    d := f32(int(key_state[sc.LCTRL]))
+    fb := f32(int(key_state[sc.S])-int(key_state[sc.W]))
+    lr := f32(int(key_state[sc.D])-int(key_state[sc.A]))
 
     yaw_cos := math.cos(math.to_radians(g.player.rotation.y))
     yaw_sin := math.sin(math.to_radians(g.player.rotation.y))
@@ -156,7 +155,7 @@ air_accelerate :: proc(wishveloc: ^vec3, dt: f32) {
     grounded_wishspd := wishspd
     // if wishspd > 2 do wishspd = 2
     wishspd = math.min(wishspd, 2)
-    currentspeed = linalg.dot(g.player.speed, wishveloc^)
+    currentspeed = lg.dot(g.player.speed, wishveloc^)
     addspeed = wishspd - currentspeed
     if addspeed <= 0 do return
 

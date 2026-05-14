@@ -4,7 +4,6 @@ import "core:debug/pe"
 import "core:strings"
 import "core:fmt"
 import "core:log"
-import sa "core:container/small_array"
 import sdl "vendor:sdl3"
 import im "shared:imgui"
 import im_sdl "shared:imgui/imgui_impl_sdl3"
@@ -50,9 +49,9 @@ selected_entity_id :: proc(scene: ^Scene) -> EntityID {
     return 0
 }
 
-update_editor :: proc(scene: ^Scene, keys: KeyboardEvents) -> (exit: bool) {
+update_editor :: proc(scene: ^Scene, keys: [dynamic; 64]KeyEvent) -> (exit: bool) {
     // g.editor.camera = g.fps_camera
-    for k in keys.data {
+    for k in keys{
         #partial switch k.key {
             case .S:
                 if .LCTRL in k.mod do write_save_file(scene^)
@@ -75,7 +74,7 @@ update_editor :: proc(scene: ^Scene, keys: KeyboardEvents) -> (exit: bool) {
         _ = sdl.GetMouseState(&m_pos.x, &m_pos.y)
         if !click(m_pos) {
             win_size := get_window_size()
-            ray_origin, ray_dir := ray_from_screen(g.editor.camera, m_pos, win_size)
+            ray_origin, ray_dir := ray_from_screen(g.fps_camera, m_pos, win_size)
             closest_hit: f32 = max(f32)
             closest_entity: EntityID = -1
             for &entity in scene.entities {
@@ -103,13 +102,13 @@ update_editor :: proc(scene: ^Scene, keys: KeyboardEvents) -> (exit: bool) {
 }
 
 cycle_editor_selected :: proc(scene: Scene, forward := true) {
-    using g.editor
+    e := &g.editor
     if forward {
-        selected_entity += 1
-        if int(selected_entity) > len(scene.entities) do selected_entity = 1
+        e.selected_entity += 1
+        if int(e.selected_entity) > len(scene.entities) do e.selected_entity = 1
     } else {
-        selected_entity -= 1
-        if selected_entity == 0 do selected_entity = EntityID(len(scene.entities))
+        e.selected_entity -= 1
+        if e.selected_entity == 0 do e.selected_entity = EntityID(len(scene.entities))
     }
 }
 
@@ -123,14 +122,14 @@ click :: proc(m_pos: vec2) -> (clicked_ui_element: bool) {
 }
 
 init_editor :: proc(winsize: [2]i32) {
-    using g.editor 
-    panels[.LEFT] = {
+    e := &g.editor
+    e.panels[.LEFT] = {
         rect = {0, 0, 300, f32(winsize.y)},
     }
-    panels[.RIGHT] = {
+    e.panels[.RIGHT] = {
         rect = {f32(winsize.x)-300, 0, 300, f32(winsize.y)},
     }
-    camera.fov = 90
+    e.camera.fov = 90
 
 }
 

@@ -4,8 +4,10 @@ import "core:log"
 import "core:strings"
 import "core:slice"
 import "core:path/filepath"
-import os "core:os/os2"
+import "core:os"
 import "base:runtime"
+
+ODIN_PATH :: "/odin-windows-amd64-dev-2026-04/odin.exe"
 
 main :: proc() {
     context.logger = log.create_console_logger()
@@ -14,8 +16,8 @@ main :: proc() {
     run := slice.contains(os.args, "run")
 
     b := strings.builder_make()
-    if run do strings.write_string(&b, "odin run src")
-    else do strings.write_string(&b, "odin build src")
+    if run do strings.write_string(&b, ODIN_PATH + " run src")
+    else do strings.write_string(&b, ODIN_PATH + " build src")
 
     if slice.contains(os.args, "debug")    do strings.write_string(&b, " -debug")
     if slice.contains(os.args, "sanitize") do strings.write_string(&b, " -sanitize=address")
@@ -40,7 +42,7 @@ build_shaders :: proc() {
 
 shadercross :: proc(file: os.File_Info, format: string) {
     basename := filepath.stem(file.name)
-    outfile := filepath.join({"shaders/out", strings.concatenate({basename, ".", format})})
+    outfile, _ := filepath.join({"shaders/out", strings.concatenate({basename, ".", format})}, context.temp_allocator)
     run({"shadercross", file.fullpath, "-o", outfile, "-I", "shaders/include"})
 }
 
@@ -63,6 +65,6 @@ run :: proc(cmd: []string) {
 exec :: proc(cmd: []string) -> (code: int, error: os.Error) {
     process := os.process_start({command = cmd, stdout = os.stdout, stderr = os.stderr}) or_return
     state := os.process_wait(process) or_return
-    os.process_close(process) or_return
+    // os.process(process) or_return
     return state.exit_code, nil
 }

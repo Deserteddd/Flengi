@@ -4,7 +4,6 @@ import "base:runtime"
 import "core:log"
 import "core:math/linalg"
 import "core:time"
-import sa "core:container/small_array"
 import sdl "vendor:sdl3"
 import im_sdl "shared:imgui/imgui_impl_sdl3"
 
@@ -46,7 +45,7 @@ init :: proc() {
     present_mode: sdl.GPUPresentMode = VSYNC? .VSYNC : .IMMEDIATE
     ok = sdl.SetGPUSwapchainParameters(g.gpu, g.window, .SDR_LINEAR, present_mode); assert(ok)
 
-    g.renderer = RND_Init()
+    RND_Init()
     for pipeline, i in g.renderer.pipelines do assert(pipeline != nil || i == .NONE)
     init_imgui()
 
@@ -80,7 +79,7 @@ run :: proc(scene: ^Scene) {
                         case .F11: toggle_fullscreen()
                         case .F1:  toggle = !toggle
                     }
-                    sa.append(&key_presses, KeyEvent{ev.key.scancode, ev.key.mod, ev.key.repeat})
+                    append(&key_presses, KeyEvent{ev.key.scancode, ev.key.mod, ev.key.repeat})
                 case .MOUSE_BUTTON_DOWN: switch ev.button.button {
                     case 1: g.mb_click = .LEFT
                     case 3: g.mb_click = .RIGHT
@@ -134,9 +133,9 @@ update :: proc(scene: ^Scene, keys: KeyboardEvents) -> (exit: bool) {
 }
 
 update_game :: proc(scene: ^Scene, keys: KeyboardEvents) -> (exit: bool) {
-    for elem in 0..<keys.len {
-        key := keys.data[elem].key
-        mod := keys.data[elem].mod
+    for elem in 0..<len(keys) {
+        key := keys[elem].key
+        mod := keys[elem].mod
         #partial switch key {
             case .ESCAPE:
                 toggle_mode()

@@ -2,7 +2,7 @@ package obj_viewer
 
 import "core:reflect"
 import "core:mem"
-import "core:math/linalg"
+import lg "core:math/linalg"
 import "core:log"
 import "core:strings"
 import "core:c"
@@ -56,7 +56,6 @@ Pipeline :: enum {
     SPRITESHEET,
     SHADOW,
     CAMERA,
-
 }
 
 Frame :: struct {
@@ -90,58 +89,57 @@ Renderer :: struct {
     quad:              Quad,
 }
 
-RND_Init :: proc() -> Renderer {
-    renderer: Renderer
-    using renderer
+RND_Init :: proc() {
+    r := &g.renderer
     pixels, size := load_pixels_byte("assets/err_tex.jpg")
     defer free_pixels(pixels)
 
     copy_commands := sdl.AcquireGPUCommandBuffer(g.gpu); assert(copy_commands != nil)
     copy_pass := sdl.BeginGPUCopyPass(copy_commands); assert(copy_pass != nil)
 
-    renderer.fallback_texture = upload_texture(copy_pass, pixels, {u32(size.x), u32(size.y)})
-    renderer.default_sampler = sdl.CreateGPUSampler(g.gpu, {})
-    assert(renderer.default_sampler != nil)
-    pipelines[.QUAD] = create_render_pipeline(
+    r.fallback_texture = upload_texture(copy_pass, pixels, {u32(size.x), u32(size.y)})
+    r.default_sampler = sdl.CreateGPUSampler(g.gpu, {})
+    assert(r.default_sampler != nil)
+    r.pipelines[.QUAD] = create_render_pipeline(
         "ui.vert",
         "ui.frag",
         Vertex2D,
         false,
     )
-    pipelines[.SPRITESHEET] = create_render_pipeline(
+    r.pipelines[.SPRITESHEET] = create_render_pipeline(
         "spritesheet.vert",
         "spritesheet.frag",
         Vertex2D,
         false,
     )
-    pipelines[.OBJ] = create_render_pipeline(
+    r.pipelines[.OBJ] = create_render_pipeline(
         "shader.vert",
         "shader.frag",
         OBJVertex,
     )
-    pipelines[.AABB] = create_render_pipeline(
+    r.pipelines[.AABB] = create_render_pipeline(
         "bbox.vert",
         "bbox.frag",
         vec3,
         primitive_type = sdl.GPUPrimitiveType.LINELIST,
         use_depth_buffer = false
     )
-    pipelines[.PLANE] = create_render_pipeline(
+    r.pipelines[.PLANE] = create_render_pipeline(
         "ocean.vert",
         "ocean.frag",
         OBJVertex,
         wireframe = true
     )
-    pipelines[.CAMERA] = create_render_pipeline(
+    r.pipelines[.CAMERA] = create_render_pipeline(
         "shadow.vert",
         "shadow.frag",
         OBJVertex
     )
-    pipelines[.SHADOW] = build_shadow_pipeline()
-    pipelines[.SKYBOX] = build_skybox_pipeline()
-    crosshair = load_sprite("assets/crosshair.png", copy_pass)
-    quad = init_quad(copy_pass)
-    skybox_texture = load_cubemap_texture(copy_pass, {
+    r.pipelines[.SHADOW] = build_shadow_pipeline()
+    r.pipelines[.SKYBOX] = build_skybox_pipeline()
+    r.crosshair = load_sprite("assets/crosshair.png", copy_pass)
+    r.quad = init_quad(copy_pass)
+    r.skybox_texture = load_cubemap_texture(copy_pass, {
         .POSITIVEX = "assets/skybox/px.png",
         .NEGATIVEX = "assets/skybox/nx.png",
         .POSITIVEY = "assets/skybox/py.png",
@@ -152,16 +150,7 @@ RND_Init :: proc() -> Renderer {
 
     width, height: i32
     ok := sdl.GetWindowSize(g.window, &width, &height); assert(ok)
-    depth_texture = sdl.CreateGPUTexture(g.gpu, {
-        type = .D2,
-        width = u32(width),
-        height = u32(height),
-        layer_count_or_depth = 1,
-        num_levels = 1,
-        format = .D32_FLOAT,
-        usage = {.SAMPLER, .DEPTH_STENCIL_TARGET}
-    })
-    shadow_map = sdl.CreateGPUTexture(g.gpu, {
+    r.depth_texture = sdl.CreateGPUTexture(g.gpu, {
         type = .D2,
         width = u32(width),
         height = u32(height),
@@ -171,18 +160,27 @@ RND_Init :: proc() -> Renderer {
         usage = {.SAMPLER, .DEPTH_STENCIL_TARGET}
     })
 
-    p_light = PointLight {
+    r.shadow_map = sdl.CreateGPUTexture(g.gpu, {
+        type = .D2,
+        width = u32(width),
+        height = u32(height),
+        layer_count_or_depth = 1,
+        num_levels = 1,
+        format = .R32_FLOAT,
+        usage = {.COLOR_TARGET}
+    })
+
+    r.p_light = PointLight {
         color = 1,
         power = 0
     }
 
-    s_light = SpotLight {
-        pos = {0, -50, 0},
+    r.s_light = SpotLight {
+        pos = {0, 50, 0},
         angle = {90, 0}
     }
     sdl.EndGPUCopyPass(copy_pass)
     ok = sdl.SubmitGPUCommandBuffer(copy_commands); assert(ok)
-    return renderer
 }
 
 toggle_fullscreen :: proc() {
@@ -241,7 +239,8 @@ frame_begin :: proc() -> Frame {
     assert(swapchain != nil && ok)
     win_size := get_window_size()
     
-    camera := g.mode == .PLAY ? g.fps_camera : g.editor.camera
+    // camera := g.mode == .PLAY ? g.fps_camera : g.editor.camera
+    camera := g.fps_camera
     proj_matrix := create_proj_matrix(camera)
     view_matrix := create_view_matrix(camera)
     vp := proj_matrix * view_matrix
@@ -254,8 +253,8 @@ frame_begin :: proc() -> Frame {
         win_size,
         VertUBOGlobal {
             vp = vp,
-            inv_view_mat = linalg.inverse(view_matrix),
-            inv_projection_mat = linalg.inverse(proj_matrix)
+            inv_view_mat = lg.inverse(view_matrix),
+            inv_projection_mat = lg.inverse(proj_matrix)
         },
         FragUBOGlobal {
             light_pos = g.renderer.p_light.position,
@@ -331,7 +330,7 @@ draw_active_aabb :: proc(scene: Scene, frame: Frame) {
         bind_pipeline(frame, .AABB)
         bindings: [1]sdl.GPUBufferBinding = { sdl.GPUBufferBinding { buffer = entity.model.aabb_vbo } } 
         sdl.BindGPUVertexBuffers(frame.render_pass, 0, &bindings[0], 1)
-        model_matrix := linalg.matrix4_from_trs(
+        model_matrix := lg.matrix4_from_trs(
             entity.transform.translation,
             entity.transform.rotation,
             entity.transform.scale
@@ -350,7 +349,7 @@ shadow_pass :: proc(scene: Scene, frame: Frame) {
 
     frame := frame
     color_target := sdl.GPUColorTargetInfo {
-        texture = frame.swapchain,
+        texture = g.renderer.shadow_map,
         load_op = .CLEAR,
         store_op = .STORE,
         clear_color = 0,
@@ -366,7 +365,7 @@ shadow_pass :: proc(scene: Scene, frame: Frame) {
         clear_stencil = 1,
     }
 
-    frame.render_pass = sdl.BeginGPURenderPass(frame.cmd_buff, &color_target, 1, &depth_target_info)
+    frame.render_pass = sdl.BeginGPURenderPass(frame.cmd_buff, &color_target, 1, nil)
     assert(frame.render_pass != nil)
     defer {
         sdl.EndGPURenderPass(frame.render_pass)
@@ -376,11 +375,11 @@ shadow_pass :: proc(scene: Scene, frame: Frame) {
     win_size := get_window_size()
     aspect := win_size.x / win_size.y
 
-    pitch_matrix    := linalg.matrix4_rotate_f32(to_radians(g.renderer.s_light.angle.x), {1, 0, 0})
-    yaw_matrix      := linalg.matrix4_rotate_f32(to_radians(g.renderer.s_light.angle.y), {0, 1, 0})
-    position_matrix := linalg.matrix4_translate_f32(g.renderer.s_light.pos)
+    pitch_matrix    := lg.matrix4_rotate_f32(to_radians(g.renderer.s_light.angle.x), {1, 0, 0})
+    yaw_matrix      := lg.matrix4_rotate_f32(to_radians(g.renderer.s_light.angle.y), {0, 1, 0})
+    position_matrix := lg.matrix4_translate_f32(g.renderer.s_light.pos)
     view            := pitch_matrix * yaw_matrix * position_matrix
-    proj            := linalg.matrix4_infinite_perspective_f32(to_radians(90), aspect, 0.01)
+    proj            := lg.matrix4_infinite_perspective_f32(to_radians(90), aspect, 0.01)
     vp              := proj * view
 
     sdl.PushGPUVertexUniformData(frame.cmd_buff, 0, &vp, size_of(mat4))
@@ -393,7 +392,7 @@ shadow_pass :: proc(scene: Scene, frame: Frame) {
                 if &model != entity.model do continue
                 if !is_visible(entity, frame.frustum_planes) do continue
 
-                model_matrix := linalg.matrix4_from_trs_f32(
+                model_matrix := lg.matrix4_from_trs_f32(
                     entity.transform.translation, 
                     entity.transform.rotation,
                     entity.transform.scale
@@ -436,12 +435,12 @@ render_3D :: proc(scene: Scene, frame: Frame) {
             if &model != entity.model do continue
             if !is_visible(entity, frame.frustum_planes) do continue
 
-            model_matrix := linalg.matrix4_from_trs_f32(
+            model_matrix := lg.matrix4_from_trs_f32(
                 entity.transform.translation, 
                 entity.transform.rotation,
                 entity.transform.scale
             )
-            normal_matrix := linalg.inverse_transpose(model_matrix)
+            normal_matrix := lg.inverse_transpose(model_matrix)
             vert_ubo_local := VertUBOLocal {
                 model_mat = model_matrix,
                 normal_mat = normal_matrix
@@ -467,19 +466,17 @@ render_3D :: proc(scene: Scene, frame: Frame) {
 
 }
 
-create_view_matrix :: proc(camera: Camera) -> linalg.Matrix4f32 {
-    using linalg
-    pitch_matrix := matrix4_rotate_f32(to_radians(camera.pitch), {1, 0, 0})
-    yaw_matrix := matrix4_rotate_f32(to_radians(camera.yaw), {0, 1, 0})
-    position_matrix := inverse(matrix4_translate_f32(camera.position))
+create_view_matrix :: proc(camera: Camera) -> lg.Matrix4f32 {
+    pitch_matrix := lg.matrix4_rotate_f32(to_radians(camera.pitch), {1, 0, 0})
+    yaw_matrix := lg.matrix4_rotate_f32(to_radians(camera.yaw), {0, 1, 0})
+    position_matrix := lg.inverse(lg.matrix4_translate_f32(camera.position))
     return pitch_matrix * yaw_matrix * position_matrix
 }
 
 create_proj_matrix :: proc(camera: Camera, loc := #caller_location) -> mat4 {
-    using linalg
     win_size := get_window_size()
     aspect := win_size.x / win_size.y
-    return matrix4_perspective_f32(
+    return lg.matrix4_perspective_f32(
         to_radians(camera.fov), 
         aspect, 
         0.01, 
@@ -614,11 +611,11 @@ load_shader :: proc(shaderfile: string) -> ^sdl.GPUShader {
             stage = .FRAGMENT
     }
 
-    shaderfile_path := filepath.join({"shaders", "out", shaderfile})
+    shaderfile_path, err := filepath.join({"shaders", "out", shaderfile}, context.temp_allocator)
     filename := strings.concatenate({shaderfile_path, ".spv"}, context.temp_allocator)
-    code, ok := os.read_entire_file_from_filename(filename, context.temp_allocator)
-    if !ok {
-        log.errorf("Failed to load shader \"%v\"", shaderfile)
+    code, read_err := os.read_entire_file_from_path(filename, context.temp_allocator)
+    if read_err != nil {
+        log.errorf("Failed to load shader '%v': %v", shaderfile, read_err)
         return nil
     }
     info := load_shader_info(shaderfile_path)
@@ -644,9 +641,15 @@ Shader_Info :: struct {
 
 load_shader_info :: proc(shaderfile: string) -> Shader_Info {
     json_filename := strings.concatenate({shaderfile, ".json"}, context.temp_allocator)
-    json_data, ok := os.read_entire_file_from_filename(json_filename, context.temp_allocator); assert(ok)
+    json_data, err := os.read_entire_file_from_path(json_filename, context.temp_allocator)
+    if err != nil {
+        log.errorf("Error reading '%v': %v", json_filename, err)
+    }
     result: Shader_Info
-    err := json.unmarshal(json_data, &result, allocator = context.temp_allocator); assert(err == nil)
+    json_err := json.unmarshal(json_data, &result, allocator = context.temp_allocator);
+    if json_err != nil {
+        log.errorf("Error unmarshalling '%v': %v", json_filename, json_err)
+    }
     return result
 }
 
@@ -772,6 +775,8 @@ create_render_pipeline :: proc(
         offset += info.size
     }
     swapchain_format := sdl.GetGPUSwapchainTextureFormat(g.gpu, g.window)
+    log.debug(type_info_of(vertex_type), swapchain_format)
+
     pipeline := sdl.CreateGPUGraphicsPipeline(g.gpu, {
         vertex_shader = vert_shader,
         fragment_shader = frag_shader,
