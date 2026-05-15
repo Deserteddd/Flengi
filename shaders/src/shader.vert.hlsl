@@ -1,28 +1,28 @@
-
 struct Input {
     float3 position : TEXCOORD0;
-    float3 normal : TEXCOORD1;
     float2 uv : TEXCOORD2;
-    uint material : TEXCOORD3;
 };
 
 struct Output {
     float4 clipPosition : sv_position;
     float3 position : texcoord0;
+    float2 uv : texcoord2;
 };
 
-cbuffer viewproj : register(b0, space1) {
-    matrix vp;
-};
+cbuffer VP : register(b0) {
+    float4x4 vp;
+}
 
-cbuffer model : register(b1, space1) {
-    matrix model;
+cbuffer PROJ : register(b1) {
+    float4x4 modelMat;
 };
 
 Output main(Input input) {
-    float4 worldPosition = mul(model, float4(input.position, 1));
     Output output;
+
+    float4 worldPosition = mul(modelMat, float4(input.position, 1));
     output.clipPosition = mul(vp, worldPosition);
+    output.uv = input.uv;
     output.position = worldPosition.xyz;
     return output;
 }

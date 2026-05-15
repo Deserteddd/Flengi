@@ -10,7 +10,8 @@ import "core:os"
 import "core:path/filepath"
 import "core:encoding/json"
 import "base:runtime"
-import sdl "vendor:sdl3"
+import rd "../../Redef/src"
+// import sdl "vendor:sdl3"
 
 PointLight :: struct {
     position: vec3,
@@ -39,22 +40,7 @@ VertUBOLocal :: struct {
     normal_mat: mat4
 }
 
-Pipeline :: enum {
-    NONE,
-    OBJ,
-    AABB,
-    SKYBOX,
-    QUAD,
-    PLANE,
-}
-
 Frame :: struct {
-    cmd_buff:           ^sdl.GPUCommandBuffer,
-    swapchain:          ^sdl.GPUTexture,
-    render_pass:        ^sdl.GPURenderPass,
-    win_size:           vec2,
-    vert_ubo_global:    VertUBOGlobal,
-    frag_ubo_global:    FragUBOGlobal,
     frustum_planes:     [6]vec4,
 }
 
@@ -66,306 +52,47 @@ Camera :: struct {
 }
 
 Renderer :: struct {
-    pipelines:         [Pipeline]^sdl.GPUGraphicsPipeline,
-    bound_pipeline:    Pipeline,
-    fallback_texture: ^sdl.GPUTexture,
-    default_sampler:  ^sdl.GPUSampler,
-    depth_texture:    ^sdl.GPUTexture,
-    skybox_texture:   ^sdl.GPUTexture,
+    vs_ui:  rd.VertexShader,
+    ps_ui:  rd.PixelShader,
+    fallback_texture:  rd.Texture,
     p_light:           PointLight,
     crosshair:         Sprite,
     quad:              Quad,
 }
 
+shader_ui :: #load("../shaders/src/ui.hlsl")
+
 RND_Init :: proc() {
     r := &g.renderer
-    pixels, size := load_pixels_byte("assets/err_tex.jpg")
-    defer free_pixels(pixels)
+    ok: bool
 
-    copy_commands := sdl.AcquireGPUCommandBuffer(g.gpu); assert(copy_commands != nil)
-    copy_pass := sdl.BeginGPUCopyPass(copy_commands); assert(copy_pass != nil)
-
-    r.fallback_texture = upload_texture(copy_pass, pixels, {u32(size.x), u32(size.y)})
-    r.default_sampler = sdl.CreateGPUSampler(g.gpu, {})
-    assert(r.default_sampler != nil)
-    r.pipelines[.QUAD] = create_render_pipeline(
-        "ui.vert",
-        "ui.frag",
-        Vertex2D,
-        false,
-    )
-    r.pipelines[.OBJ] = create_render_pipeline(
-        "shader.vert",
-        "shader.frag",
-        OBJVertex,
-    )
-    r.pipelines[.AABB] = create_render_pipeline(
-        "bbox.vert",
-        "bbox.frag",
-        vec3,
-        primitive_type = sdl.GPUPrimitiveType.LINELIST,
-        use_depth_buffer = false
-    )
-    r.pipelines[.PLANE] = create_render_pipeline(
-        "ocean.vert",
-        "ocean.frag",
-        OBJVertex,
-        wireframe = true
-    )
-    r.pipelines[.SKYBOX] = build_skybox_pipeline()
-    r.crosshair = load_sprite("assets/crosshair.png", copy_pass)
-    r.quad = init_quad(copy_pass)
-    r.skybox_texture = load_cubemap_texture(copy_pass, {
-        .POSITIVEX = "assets/skybox/px.png",
-        .NEGATIVEX = "assets/skybox/nx.png",
-        .POSITIVEY = "assets/skybox/py.png",
-        .NEGATIVEY = "assets/skybox/ny.png",
-        .POSITIVEZ = "assets/skybox/pz.png",
-        .NEGATIVEZ = "assets/skybox/nz.png",
-    })
-
-    width, height: i32
-    ok := sdl.GetWindowSize(g.window, &width, &height); assert(ok)
-    r.depth_texture = sdl.CreateGPUTexture(g.gpu, {
-        type = .D2,
-        width = u32(width),
-        height = u32(height),
-        layer_count_or_depth = 1,
-        num_levels = 1,
-        format = .D32_FLOAT,
-        usage = {.SAMPLER, .DEPTH_STENCIL_TARGET}
-    })
-
-
-    r.p_light = PointLight {
-        color = 1,
-        power = 0
-    }
-
-    sdl.EndGPUCopyPass(copy_pass)
-    ok = sdl.SubmitGPUCommandBuffer(copy_commands); assert(ok)
+    r.quad = init_quad()
+    r.crosshair = load_sprite("assets/crosshair.png")
+    r.vs_ui, ok = rd.load_vertex_shader(shader_ui, "vs_main", Vertex2D); assert(ok)
+    r.ps_ui, ok = rd.load_pixel_shader(shader_ui, "ps_main"); assert(ok)
 }
 
 toggle_fullscreen :: proc() {
-    g.fullscreen = !g.fullscreen
-    ok: bool
-    window_bounds: sdl.Rect
-    if !sdl.GetDisplayBounds(1, &window_bounds) {
-        log.log(.Error, sdl.GetError())
-    }
-    sdl.ReleaseWindowFromGPUDevice(g.gpu, g.window)
-    sdl.DestroyWindow(g.window)
-    width, height: i32
-    if g.fullscreen {
-        width = window_bounds.w
-        height = window_bounds.h
-        g.window = sdl.CreateWindow("Demo window", width, height, {.FULLSCREEN})
-        assert(g.window != nil)
-        ok = sdl.ClaimWindowForGPUDevice(g.gpu, g.window); assert(ok)
-    } else {
-        width = 1280
-        height = 720
-        g.window = sdl.CreateWindow("Demo window", width, height, {}); assert(g.window != nil)
-        ok = sdl.ClaimWindowForGPUDevice(g.gpu, g.window); assert(ok)
-    }
-    present_mode: sdl.GPUPresentMode = VSYNC? .VSYNC : .IMMEDIATE
-    ok = sdl.SetGPUSwapchainParameters(g.gpu, g.window, .SDR_LINEAR, present_mode); assert(ok)
-    depth := sdl.CreateGPUTexture(g.gpu, {
-        type = .D2,
-        width = u32(width),
-        height = u32(height),
-        layer_count_or_depth = 1,
-        num_levels = 1,
-        format = .D32_FLOAT,
-        usage = {.SAMPLER, .DEPTH_STENCIL_TARGET}
-    })
-    sdl.ReleaseGPUTexture(g.gpu, g.renderer.depth_texture)
-    g.renderer.depth_texture = depth
-    switch g.mode {
-        case .EDIT:
-            ok = sdl.SetWindowRelativeMouseMode(g.window, false); assert(ok)
-        case .PLAY:
-            ok = sdl.SetWindowRelativeMouseMode(g.window, true); assert(ok)
-    }
-    assert(ok)
-    init_imgui()
-    init_editor({width, height})
-    _ = sdl.GetTicks()
+    panic("TODO")
 }
 
 
-frame_begin :: proc() -> Frame {
-    cmd_buff := sdl.AcquireGPUCommandBuffer(g.gpu); assert(cmd_buff != nil)
-    assert(cmd_buff  != nil)
-    swapchain: ^sdl.GPUTexture
-    ok := sdl.WaitAndAcquireGPUSwapchainTexture(cmd_buff, g.window, &swapchain, nil, nil)
-    assert(swapchain != nil && ok)
-    win_size := get_window_size()
-    
-    // camera := g.mode == .PLAY ? g.fps_camera : g.editor.camera
-    camera := g.fps_camera
-    proj_matrix := create_proj_matrix(camera)
-    view_matrix := create_view_matrix(camera)
+get_furustum_planes :: proc() -> [6]vec4 {
+    camera := g.camera
+    proj_matrix := create_proj_matrix(g.camera)
+    view_matrix := create_view_matrix(g.camera)
     vp := proj_matrix * view_matrix
-    frustum_planes := create_frustum_planes(vp)
-
-    return Frame {
-        cmd_buff,
-        swapchain,
-        nil,
-        win_size,
-        VertUBOGlobal {
-            vp = vp,
-            inv_view_mat = lg.inverse(view_matrix),
-            inv_projection_mat = lg.inverse(proj_matrix)
-        },
-        FragUBOGlobal {
-            light_pos = g.renderer.p_light.position,
-            light_color = g.renderer.p_light.color,
-            light_intensity = g.renderer.p_light.power,
-            view_pos = camera.position
-        },
-        frustum_planes
+    t := lg.transpose(vp)
+    return {
+        t[3]+t[0],
+        t[3]+t[0],
+        t[3]+t[1],
+        t[3]+t[1],
+        t[3]+t[2],
+        t[3]+t[2],
     }
 }
 
-
-frame_submit :: proc(frame: Frame) {
-    ok := sdl.SubmitGPUCommandBuffer(frame.cmd_buff)
-    assert(ok)
-}
-
-render_plane :: proc (plane: Plane, frame: Frame) {
-    if plane == {} do return
-    bind_pipeline(frame, .PLANE)
-    time := f32(g.total_time)
-    sdl.PushGPUVertexUniformData(frame.cmd_buff, 1, &time, size_of(f32))
-    bindings: [2]sdl.GPUBufferBinding = {
-        sdl.GPUBufferBinding{buffer = plane.vbo},
-        sdl.GPUBufferBinding{buffer = plane.ibo}
-    }
-    sdl.BindGPUFragmentSamplers(frame.render_pass, 0, &(sdl.GPUTextureSamplerBinding  {
-        texture = g.renderer.skybox_texture,
-        sampler = g.renderer.default_sampler
-    }), 1)
-    sdl.BindGPUVertexBuffers(frame.render_pass, 0, &bindings[0], 1)
-    sdl.BindGPUIndexBuffer(frame.render_pass, bindings[1], ._32BIT)
-    sdl.DrawGPUIndexedPrimitives(frame.render_pass, plane.num_indices, 1, 0, 0, 0)
-}
-
-begin_3d_renderpass :: proc(frame: ^Frame) {
-    assert(frame.cmd_buff != nil)
-    assert(frame.swapchain != nil)
-    assert(frame.render_pass == nil)
-    color_target := sdl.GPUColorTargetInfo {
-        texture = frame.swapchain,
-        load_op = .CLEAR,
-        store_op = .STORE,
-        clear_color = 0,
-    }
-    depth_target_info := sdl.GPUDepthStencilTargetInfo {
-        texture = g.renderer.depth_texture,
-        clear_depth = 1,
-        load_op = .CLEAR,
-        store_op = .STORE,
-        stencil_load_op = .CLEAR,
-        stencil_store_op = .STORE,
-        cycle = true,
-        clear_stencil = 1,
-    }
-    frame.render_pass = sdl.BeginGPURenderPass(frame.cmd_buff, &color_target, 1, &depth_target_info)
-    assert(frame.render_pass != nil)
-    sdl.PushGPUVertexUniformData(frame.cmd_buff, 0, &frame.vert_ubo_global, size_of(VertUBOGlobal))
-    sdl.PushGPUFragmentUniformData(frame.cmd_buff, 0, &frame.frag_ubo_global, size_of(FragUBOGlobal))
-}
-
-submit_3d_renderpass :: proc(frame: ^Frame) {
-    sdl.EndGPURenderPass(frame.render_pass)
-    frame.render_pass = nil
-}
-
-draw_active_aabb :: proc(scene: Scene, frame: Frame) {
-    // Bounding Box
-    for entity in scene.entities {
-        if entity.model == nil do continue
-        if entity.id != g.editor.selected_entity do continue
-        if !is_visible(entity, frame.frustum_planes) do continue
-        bind_pipeline(frame, .AABB)
-        bindings: [1]sdl.GPUBufferBinding = { sdl.GPUBufferBinding { buffer = entity.model.aabb_vbo } } 
-        sdl.BindGPUVertexBuffers(frame.render_pass, 0, &bindings[0], 1)
-        model_matrix := lg.matrix4_from_trs(
-            entity.transform.translation,
-            entity.transform.rotation,
-            entity.transform.scale
-        )
-        sdl.PushGPUVertexUniformData(frame.cmd_buff, 1, &model_matrix, size_of(mat4))
-        g.debug_info.draw_call_count += 1
-        sdl.DrawGPUPrimitives(frame.render_pass, u32(24*len(entity.model.aabbs)), 1, 0, 0)
-        break
-    }
-}
-
-
-
-render_3D :: proc(scene: Scene, frame: Frame) {
-    assert(frame.cmd_buff  != nil)
-    assert(frame.swapchain != nil)
-    assert(frame.render_pass != nil)
-
-    // Entities
-    fallback_binding := sdl.GPUTextureSamplerBinding {
-        texture = g.renderer.fallback_texture,
-        sampler = g.renderer.default_sampler
-    }
-    bind_pipeline(frame, .OBJ)
-    for &model in scene.models {
-        bindings: [1]sdl.GPUBufferBinding = {{buffer = model.vbo}}
-        sdl.BindGPUVertexBuffers(frame.render_pass, 0, &bindings[0], 1)
-        sdl.BindGPUFragmentStorageBuffers(frame.render_pass, 0, &model.material_buffer, 1)
-        tex_bindings: [9]sdl.GPUTextureSamplerBinding
-        for i in 0..<8 {
-            tex_bindings[i] = len(model.textures) > i ? {
-                texture = model.textures[i].texture, sampler = g.renderer.default_sampler
-            } : {
-                texture = g.renderer.fallback_texture, sampler = g.renderer.default_sampler
-            }
-        }
-        tex_bindings[8] = {texture = g.renderer.skybox_texture, sampler = g.renderer.default_sampler}
-        sdl.BindGPUFragmentSamplers(frame.render_pass, 0, raw_data(tex_bindings[:]), len(tex_bindings))
-        for entity in scene.entities {
-            if &model != entity.model do continue
-            if !is_visible(entity, frame.frustum_planes) do continue
-
-            model_matrix := lg.matrix4_from_trs_f32(
-                entity.transform.translation, 
-                entity.transform.rotation,
-                entity.transform.scale
-            )
-            normal_matrix := lg.inverse_transpose(model_matrix)
-            vert_ubo_local := VertUBOLocal {
-                model_mat = model_matrix,
-                normal_mat = normal_matrix
-            }
-            sdl.PushGPUVertexUniformData(frame.cmd_buff, 1, &vert_ubo_local, size_of(VertUBOLocal))
-            g.debug_info.draw_call_count += 1
-            sdl.DrawGPUPrimitives(frame.render_pass, model.num_vertices, 1, 0, 0)           
-        }
-    }
-
-
-
-    // Skybox
-    {
-        bind_pipeline(frame, .SKYBOX)
-        sdl.BindGPUFragmentSamplers(frame.render_pass, 0, &(sdl.GPUTextureSamplerBinding  {
-            texture = g.renderer.skybox_texture,
-            sampler = g.renderer.default_sampler
-        }), 1)
-        g.debug_info.draw_call_count += 1
-        sdl.DrawGPUPrimitives(frame.render_pass, 3, 1, 0, 0)
-    }
-
-}
 
 create_view_matrix :: proc(camera: Camera) -> lg.Matrix4f32 {
     pitch_matrix := lg.matrix4_rotate_f32(to_radians(camera.pitch), {1, 0, 0})
@@ -375,7 +102,7 @@ create_view_matrix :: proc(camera: Camera) -> lg.Matrix4f32 {
 }
 
 create_proj_matrix :: proc(camera: Camera, loc := #caller_location) -> mat4 {
-    win_size := get_window_size()
+    win_size := rd.get_window_size()
     aspect := win_size.x / win_size.y
     return lg.matrix4_perspective_f32(
         to_radians(camera.fov), 
@@ -385,368 +112,6 @@ create_proj_matrix :: proc(camera: Camera, loc := #caller_location) -> mat4 {
     )
 }
 
-get_window_size :: proc() -> vec2 {
-    x, y: i32
-    ok := sdl.GetWindowSize(g.window, &x, &y); assert(ok)
-    return {f32(x), f32(y)}
-}
-
-create_buffer_with_data :: proc(
-    transfer_buffer: ^sdl.GPUTransferBuffer,
-    copy_pass: ^sdl.GPUCopyPass,
-    usage: sdl.GPUBufferUsageFlags,
-    data: []$T
-) -> ^sdl.GPUBuffer {
-    len_bytes := len(data) * size_of(T)
-
-    buffer := sdl.CreateGPUBuffer(g.gpu, {
-        usage = usage,
-        size = u32(len_bytes),
-    });
-
-    transfer_mem := cast([^]byte) sdl.MapGPUTransferBuffer(g.gpu, transfer_buffer, true)
-    mem.copy(transfer_mem, raw_data(data), len_bytes)
-    sdl.UnmapGPUTransferBuffer(g.gpu, transfer_buffer)
-    sdl.UploadToGPUBuffer(copy_pass, 
-        sdl.GPUTransferBufferLocation {
-            offset = 0,
-            transfer_buffer = transfer_buffer
-        },
-        sdl.GPUBufferRegion {
-            offset = 0,
-            size = u32(len_bytes),
-            buffer = buffer
-        }, true
-    )
-
-    return buffer
-}
-
-upload_texture :: proc(
-    copy_pass: ^sdl.GPUCopyPass, 
-    pixels: []byte, 
-    size: [2]u32
-) -> ^sdl.GPUTexture {
-
-    texture := sdl.CreateGPUTexture(g.gpu, {
-        type = .D2,
-        format = .R8G8B8A8_UNORM_SRGB,
-        usage = {.SAMPLER},
-        width = u32(size.x),
-        height = u32(size.y),
-        layer_count_or_depth = 1,
-        num_levels = 1
-    }); assert(texture != nil)
-
-    tex_transfer_buffer := sdl.CreateGPUTransferBuffer(g.gpu, {
-        usage = .UPLOAD,
-        size = u32(len(pixels)),
-    }); assert(tex_transfer_buffer != nil)
-
-    tex_transfer_mem := sdl.MapGPUTransferBuffer(g.gpu, tex_transfer_buffer, false)
-    mem.copy(tex_transfer_mem, raw_data(pixels), len(pixels))
-    sdl.UnmapGPUTransferBuffer(g.gpu, tex_transfer_buffer)
-    sdl.UploadToGPUTexture(copy_pass, 
-        {transfer_buffer = tex_transfer_buffer},
-        {texture = texture, w = u32(size.x), h = u32(size.y), d = 1},
-        false
-    )
-
-    sdl.ReleaseGPUTransferBuffer(g.gpu, tex_transfer_buffer)
-    return texture
-}
-
-upload_cubemap_texture_sides :: proc(
-    copy_pass: ^sdl.GPUCopyPass,
-    pixels: [sdl.GPUCubeMapFace][]byte,
-    size: u32
-) -> ^sdl.GPUTexture {
-	texture := sdl.CreateGPUTexture(g.gpu, {
-		type = .CUBE,
-		format = .R8G8B8A8_UNORM_SRGB, // pixels are in sRGB, converted to linear in shaders
-		usage = {.SAMPLER},
-		width = size,
-		height = size,
-		layer_count_or_depth = 6,
-		num_levels = 1,
-	})
-
-	side_byte_size := int(size * size * 4) // 4 bytes per pixel
-	for side_pixels in pixels do assert(len(side_pixels) == side_byte_size)
-
-	tex_transfer_buf := sdl.CreateGPUTransferBuffer(g.gpu, {
-		usage = .UPLOAD,
-		size = u32(side_byte_size * 6)
-	})
-	defer sdl.ReleaseGPUTransferBuffer(g.gpu, tex_transfer_buf)
-
-	tex_transfer_mem := cast([^]byte)sdl.MapGPUTransferBuffer(g.gpu, tex_transfer_buf, false)
-
-	offset := 0
-	for side_pixels in pixels {
-		mem.copy(tex_transfer_mem[offset:], raw_data(side_pixels), side_byte_size)
-		offset += side_byte_size
-	}
-
-	sdl.UnmapGPUTransferBuffer(g.gpu, tex_transfer_buf)
-
-	offset = 0
-	for side in 0..<len(pixels) {
-		sdl.UploadToGPUTexture(copy_pass,
-			{transfer_buffer = tex_transfer_buf, offset = u32(offset)},
-			{texture = texture, layer = u32(side), w = size, h = size, d = 1},
-			false
-		)
-		offset += side_byte_size
-	}
-
-	return texture
-}
-
-load_shader :: proc(shaderfile: string) -> ^sdl.GPUShader {
-    stage: sdl.GPUShaderStage
-    switch filepath.ext(shaderfile) {
-        case ".vert":
-            stage = .VERTEX
-        case ".frag":
-            stage = .FRAGMENT
-    }
-
-    shaderfile_path, err := filepath.join({"shaders", "out", shaderfile}, context.temp_allocator)
-    filename := strings.concatenate({shaderfile_path, ".spv"}, context.temp_allocator)
-    code, read_err := os.read_entire_file_from_path(filename, context.temp_allocator)
-    if read_err != nil {
-        log.errorf("Failed to load shader '%v': %v", shaderfile, read_err)
-        return nil
-    }
-    info := load_shader_info(shaderfile_path)
-    return sdl.CreateGPUShader(g.gpu, {
-        code_size = len(code),
-        code = raw_data(code),
-        entrypoint = "main",
-        format = {.SPIRV},
-        stage = stage,
-        num_uniform_buffers = info.uniform_buffers,
-        num_samplers = info.samplers,
-        num_storage_buffers = info.storage_buffers,
-        num_storage_textures = info.storage_textures
-    })
-}
-
-Shader_Info :: struct {
-    samplers:           u32,
-    storage_textures:   u32,
-    storage_buffers:    u32,
-    uniform_buffers:    u32
-}
-
-load_shader_info :: proc(shaderfile: string) -> Shader_Info {
-    json_filename := strings.concatenate({shaderfile, ".json"}, context.temp_allocator)
-    json_data, err := os.read_entire_file_from_path(json_filename, context.temp_allocator)
-    if err != nil {
-        log.errorf("Error reading '%v': %v", json_filename, err)
-    }
-    result: Shader_Info
-    json_err := json.unmarshal(json_data, &result, allocator = context.temp_allocator);
-    if json_err != nil {
-        log.errorf("Error unmarshalling '%v': %v", json_filename, json_err)
-    }
-    return result
-}
-
-build_shadow_pipeline :: proc() -> ^sdl.GPUGraphicsPipeline {
-    vert_shader := load_shader("shadow.vert"); defer sdl.ReleaseGPUShader(g.gpu, vert_shader)
-    frag_shader := load_shader("shadow.frag"); defer sdl.ReleaseGPUShader(g.gpu, frag_shader)
-    vb_descriptions: [1]sdl.GPUVertexBufferDescription
-    vb_descriptions = {
-        sdl.GPUVertexBufferDescription {
-            slot = u32(0),
-            pitch = size_of(OBJVertex),
-            input_rate = .VERTEX,
-            instance_step_rate = 0
-        },
-    }  
-
-    vb_attribute_data := get_vb_layout(OBJVertex)
-    vb_attributes := make([]sdl.GPUVertexAttribute, len(vb_attribute_data), context.temp_allocator)
-    offset: u32
-    for info, i in vb_attribute_data {
-        vb_attributes[i] = sdl.GPUVertexAttribute {
-            location = u32(i),
-            buffer_slot = 0,
-            format = info.format,
-            offset = offset
-        }
-        offset += info.size
-    }
-    shadow_pipeline := sdl.CreateGPUGraphicsPipeline(g.gpu, {
-        vertex_shader = vert_shader,
-        fragment_shader = frag_shader,
-        primitive_type = .TRIANGLELIST,
-        vertex_input_state = {
-            vertex_buffer_descriptions = &vb_descriptions[0],
-            num_vertex_buffers = 1,
-            vertex_attributes = &vb_attributes[0],
-            num_vertex_attributes = u32(len(vb_attributes))
-        },
-        target_info = {
-            has_depth_stencil_target = true,
-            depth_stencil_format = .D32_FLOAT
-        },
-        rasterizer_state = {
-            fill_mode = .FILL,
-            cull_mode = .BACK,
-            // enable_depth_bias = true,
-            // depth_bias_constant_factor = 1.25,
-            // depth_bias_slope_factor = 1.75,
-        },
-        depth_stencil_state = {
-            enable_depth_test = true,
-            enable_depth_write = true,
-            compare_op = .LESS,
-        }
-    })
-    return shadow_pipeline
-}
-
-build_skybox_pipeline :: proc() -> ^sdl.GPUGraphicsPipeline {
-    vert_shader := load_shader("skybox.vert"); defer sdl.ReleaseGPUShader(g.gpu, vert_shader)
-    frag_shader := load_shader("skybox.frag"); defer sdl.ReleaseGPUShader(g.gpu, frag_shader)
-    format := sdl.GetGPUSwapchainTextureFormat(g.gpu, g.window)
-    pipeline := sdl.CreateGPUGraphicsPipeline(g.gpu, {
-        vertex_shader = vert_shader,
-        fragment_shader = frag_shader,
-        primitive_type = .TRIANGLELIST,
-        depth_stencil_state = {
-            enable_depth_test = true,
-            enable_depth_write = false,
-            compare_op = .EQUAL,
-        },
-        rasterizer_state = {cull_mode = .BACK},
-        target_info = {
-            num_color_targets = 1,
-            color_target_descriptions = &(sdl.GPUColorTargetDescription {
-                format = format
-            }),
-            has_depth_stencil_target = true,
-            depth_stencil_format = .D32_FLOAT
-        }
-    }); assert(pipeline != nil)
-    return pipeline
-}
-
-is_visible :: proc(entity: Entity, frustum_planes: [6]vec4) -> bool {
-    if entity.model == nil do return false
-    for aabb in entity.model.aabbs {
-        if aabb_intersects_frustum(frustum_planes, {
-            aabb.min * entity.transform.scale + entity.transform.translation,
-            aabb.max * entity.transform.scale + entity.transform.translation
-        }) { return true }
-    }
-    return false
-}
-
-create_render_pipeline :: proc(
-    vert_shader: string,
-    frag_shader: string,
-    $vertex_type: typeid,
-    use_depth_buffer := true,
-    primitive_type := sdl.GPUPrimitiveType.TRIANGLELIST,
-    wireframe := false
-) -> ^sdl.GPUGraphicsPipeline {
-    vert_shader := load_shader(vert_shader); defer sdl.ReleaseGPUShader(g.gpu, vert_shader)
-    frag_shader := load_shader(frag_shader); defer sdl.ReleaseGPUShader(g.gpu, frag_shader)
-
-    vb_descriptions: []sdl.GPUVertexBufferDescription = {sdl.GPUVertexBufferDescription {
-        slot = 0,
-        pitch = u32(size_of(vertex_type)),
-        input_rate = .VERTEX,
-        instance_step_rate = 0
-    }}
-    vb_attribute_data := get_vb_layout(vertex_type)
-    vb_attributes := make([]sdl.GPUVertexAttribute, len(vb_attribute_data), context.temp_allocator)
-    offset: u32
-    for info, i in vb_attribute_data {
-        vb_attributes[i] = sdl.GPUVertexAttribute {
-            location = u32(i),
-            buffer_slot = 0,
-            format = info.format,
-            offset = offset
-        }
-        offset += info.size
-    }
-    swapchain_format := sdl.GetGPUSwapchainTextureFormat(g.gpu, g.window)
-    log.debug(type_info_of(vertex_type), swapchain_format)
-
-    pipeline := sdl.CreateGPUGraphicsPipeline(g.gpu, {
-        vertex_shader = vert_shader,
-        fragment_shader = frag_shader,
-        primitive_type = primitive_type,
-        target_info = {
-            num_color_targets = 1,
-            color_target_descriptions = &(sdl.GPUColorTargetDescription {
-                format = swapchain_format,
-                blend_state = {
-                    src_color_blendfactor = .SRC_ALPHA,
-                    dst_color_blendfactor = .ONE_MINUS_SRC_ALPHA,
-                    color_blend_op = .ADD,
-                    src_alpha_blendfactor = .ONE,
-                    dst_alpha_blendfactor = .ONE_MINUS_SRC_ALPHA,
-                    alpha_blend_op = .ADD,
-                    enable_blend = true
-                }
-            }),
-            has_depth_stencil_target = use_depth_buffer,
-            depth_stencil_format = .D32_FLOAT,
-        },
-        vertex_input_state = {
-            vertex_buffer_descriptions = &vb_descriptions[0],
-            num_vertex_buffers = 1,
-            vertex_attributes = &vb_attributes[0],
-            num_vertex_attributes = u32(len(vb_attributes))
-        },
-        rasterizer_state = {
-            fill_mode = wireframe ? .LINE : .FILL,
-            cull_mode = .BACK
-        },
-        depth_stencil_state = {
-            enable_depth_test = use_depth_buffer,
-            enable_depth_write = use_depth_buffer,
-            compare_op = .LESS,
-        }
-    }); assert(pipeline != nil)
-    return pipeline
-}
-
-vbElementInfo :: struct {
-    format: sdl.GPUVertexElementFormat,
-    size: u32
-}
-
-get_vb_layout :: proc($vertex_type: typeid) -> []vbElementInfo {
-    element_info_from_type :: proc(type: ^runtime.Type_Info) -> vbElementInfo {
-        switch type {
-            case type_info_of(vec2): return {.FLOAT2, size_of(vec2)}
-            case type_info_of(vec3): return {.FLOAT3, size_of(vec3)}
-            case type_info_of(vec4): return {.FLOAT4, size_of(vec4)}
-            case type_info_of(u32):  return {.UINT,   size_of(uint)}
-            case:
-                return {.INVALID, 0}
-        }
-    }
-    fields := reflect.struct_field_types(vertex_type)
-    data := make([]vbElementInfo, len(fields) > 0 ? len(fields) : 1, context.temp_allocator)
-    if len(data) == 1 {
-        data[0] = element_info_from_type(type_info_of(vertex_type))
-        return data
-    }
-    for field, i in fields {
-        data[i] = element_info_from_type(field)
-    }
-    return data
-}
-
-
 // ----------------------------
 //        2D Renderer
 // ----------------------------
@@ -755,30 +120,19 @@ Vertex2D :: struct {
     uv:       vec2,
 }
 
-Rect :: sdl.FRect
+Rect :: struct {
+	x, y, w, h: f32,
+}
 
 Sprite :: struct {
-    name: string,
-    texture: ^sdl.GPUTexture,
+    name:    string,
+    texture: rd.Texture,
     size:    [2]i32
-}
-
-SpriteSheet :: struct {
-    texture: ^sdl.GPUTexture,
-    rects:   []Rect,
-    size:    [2]i32
-}
-
-SpriteSheetUBO :: struct {
-    dst_rect:    Rect,
-    src_rect:    Rect,
-    tex_size:    Rect,
-    screen_size: vec2,
 }
 
 Quad :: struct {
-    vbo:     ^sdl.GPUBuffer,
-    ibo:     ^sdl.GPUBuffer,
+    vbo:     rd.VertexBuffer,
+    ibo:     rd.IndexBuffer,
 }
 
 UBO2D :: struct {
@@ -789,7 +143,7 @@ UBO2D :: struct {
     color:    vec4
 }
 
-init_quad :: proc(copy_pass: ^sdl.GPUCopyPass) -> Quad {
+init_quad :: proc() -> Quad {
     verts := [4]Vertex2D {
         Vertex2D{{-1, -1}, {0, 0}}, // Bottom-left
         Vertex2D{{ 1, -1}, {1, 0}}, // Bottom-right
@@ -800,131 +154,41 @@ init_quad :: proc(copy_pass: ^sdl.GPUCopyPass) -> Quad {
         0, 2, 1, // First triangle
         2, 0, 3, // Second triangle
     }
-    len_bytes := u32(len(verts) * size_of(Vertex2D))
 
-    vbo, ibo := upload_polygon(copy_pass, verts[:], indices[:])
+    vbo := rd.create_vertex_buffer(verts[:])
+    ibo := rd.create_index_buffer(indices[:])
     return Quad {vbo, ibo}
 }
 
-begin_2d :: proc(frame: ^Frame) {
-    assert(frame.cmd_buff != nil)
-    assert(frame.swapchain != nil)
-    assert(frame.render_pass == nil)
+draw_sprite :: proc(sprite: Sprite, pos: vec2 = 0, scale: f32 = 1) {
+    sprite := sprite
+    win_size := rd.get_window_size()
 
-    color_target := sdl.GPUColorTargetInfo {
-        texture = frame.swapchain,
-        load_op = .LOAD,
-        store_op = .STORE,
-    }
-    frame.render_pass = sdl.BeginGPURenderPass(frame.cmd_buff, &color_target, 1, nil); assert(frame.render_pass != nil)
-    assert(g.renderer.quad.vbo != nil)
-    bindings: [2]sdl.GPUBufferBinding = {
-        sdl.GPUBufferBinding {buffer = g.renderer.quad.vbo},
-        sdl.GPUBufferBinding {buffer = g.renderer.quad.ibo},
-    }
-    sdl.BindGPUFragmentSamplers(frame.render_pass, 0, &(sdl.GPUTextureSamplerBinding  {
-        texture = g.renderer.fallback_texture,
-        sampler = g.renderer.default_sampler
-    }), 1)
-    sdl.BindGPUVertexBuffers(frame.render_pass, 0, &bindings[0], 1)
-    sdl.BindGPUIndexBuffer(frame.render_pass, bindings[1], ._16BIT)
-}
-
-draw_crosshair :: proc(frame: Frame) {
-    bind_pipeline(frame, .QUAD)
-    draw_sprite(g.renderer.crosshair, frame)
-}
-
-draw_sprite :: proc(sprite: Sprite, frame: Frame, pos: vec2 = 0, scale: f32 = 1) {
-    if frame.render_pass == nil do panic("Render pass not in progress")
-
-    x := pos == 0 ? frame.win_size.x/2 - f32(sprite.size.x)/2 : pos.x
-    y := pos == 0 ? frame.win_size.y/2 - f32(sprite.size.y)/2 : pos.y
+    x := pos == 0 ? win_size.x/2 - f32(sprite.size.x)/2 : pos.x
+    y := pos == 0 ? win_size.y/2 - f32(sprite.size.y)/2 : pos.y
 
     ubo := UBO2D {
         rect = {x, y, f32(sprite.size.x)*scale, f32(sprite.size.y)*scale},
-        win_size = frame.win_size,
+        win_size = rd.get_window_size(),
         use_tex = true,
     }
-    sdl.PushGPUVertexUniformData(frame.cmd_buff, 0, &ubo, size_of(UBO2D))
-    sdl.BindGPUFragmentSamplers(frame.render_pass, 0, 
-        &(sdl.GPUTextureSamplerBinding {
-            texture = sprite.texture,
-            sampler = g.renderer.default_sampler
-        }), 1
-    )
-    sdl.DrawGPUIndexedPrimitives(frame.render_pass, 6, 1, 0, 0, 0)
+    
+    r := &g.renderer
+    rd.bind(&r.vs_ui)
+    rd.bind(&r.ps_ui)
+    rd.bind(&r.quad.vbo)
+    rd.bind(&r.quad.ibo)
+    rd.bind(&r.crosshair.texture)
+    rd.set_blend_mode(.Alpha)
+    rd.push_constant_data(.Vertex, &ubo, 0)
+    rd.draw_indexed(6)
 }
 
-draw_sprite_from_sheet :: proc(
-    sheet: SpriteSheet,
-    pos: vec2,
-    index: int,
-    frame: Frame
-) {
-    if frame.render_pass == nil do panic("Render pass not in progress")
-    if index >= len(sheet.rects) {
-        log.logf(.Error, "Sprite index %d is out of range", index)
-        return
-    }
-
-    src_rect := sheet.rects[index]
-    ubo_global := SpriteSheetUBO{
-        {pos.x, pos.y, src_rect.w, src_rect.h},
-        src_rect,
-        {
-            f32(sheet.size.x), f32(sheet.size.y),
-            1/f32(sheet.size.x), 1/f32(sheet.size.y)
-        },
-        frame.win_size
-    }
-    sdl.PushGPUVertexUniformData(frame.cmd_buff, 0, &ubo_global, size_of(SpriteSheetUBO))
-    sdl.BindGPUFragmentSamplers(frame.render_pass, 0, 
-        &(sdl.GPUTextureSamplerBinding {
-            texture = sheet.texture,
-            sampler = g.renderer.default_sampler
-        }), 1
-    )
-    sdl.DrawGPUIndexedPrimitives(frame.render_pass, 6, 1, 0, 0, 0)
-}
-
-draw_rect :: proc(rect: Rect, frame: Frame, color: vec4 = 0.2) {
-    if frame.render_pass == nil do panic("Render pass not in progress")
-
+draw_rect :: proc(rect: Rect, color: vec4 = 0.2) {
     ubo := UBO2D {
         rect = rect,
-        win_size = frame.win_size,
-        use_tex = false,
+        win_size = rd.get_window_size(),
         color = color
     }
-    sdl.PushGPUVertexUniformData(frame.cmd_buff, 0, &ubo, size_of(UBO2D))
-    sdl.DrawGPUIndexedPrimitives(frame.render_pass, 6, 1, 0, 0, 0)
+    panic("TODO")
 }
-
-submit_2d :: proc(frame: ^Frame) {
-    sdl.EndGPURenderPass(frame.render_pass)
-    frame.render_pass = nil
-}
-
-
-
-upload_polygon :: proc(
-    copy_pass:   ^sdl.GPUCopyPass,
-    verts:      []Vertex2D,
-    indices:    []u16
-) -> (vbo, ibo: ^sdl.GPUBuffer){
-    len_bytes := u32(len(verts) * size_of(Vertex2D))
-
-    transfer_buffer := sdl.CreateGPUTransferBuffer(g.gpu, {
-        usage = sdl.GPUTransferBufferUsage.UPLOAD,
-        size = len_bytes,
-    }); assert(transfer_buffer != nil)
-
-
-    vbo = create_buffer_with_data(transfer_buffer, copy_pass, {.VERTEX}, verts[:]); assert(vbo != nil)
-    ibo = create_buffer_with_data(transfer_buffer, copy_pass, {.INDEX}, indices[:]); assert(ibo != nil)
-
-    sdl.ReleaseGPUTransferBuffer(g.gpu, transfer_buffer)
-    return
-}
-

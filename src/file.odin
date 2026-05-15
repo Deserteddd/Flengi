@@ -8,7 +8,7 @@ import "core:log"
 import "core:os"
 import "core:encoding/json"
 import stbi "vendor:stb/image"
-import sdl "vendor:sdl3"
+import rd "../../Redef/src"
 
 
 AssetInstance :: struct {
@@ -20,7 +20,7 @@ AssetInstance :: struct {
 
 SaveFile :: struct {
     checkpoint: [2]vec3,
-    assets:    map[string]string,
+    assets:    map[string]string, // name, path
     instances: []AssetInstance
 }
 
@@ -55,11 +55,10 @@ write_save_file :: proc(scene: Scene, loc := #caller_location) {
     fmt.printfln("%v: Save file writing successful", loc)
 }
 
-load_sprite :: proc(path: string, copy_pass: ^sdl.GPUCopyPass) -> Sprite {
+load_sprite :: proc(path: string) -> Sprite {
     pixels, size := load_pixels_byte(path); assert(pixels != nil)
     size_u32: [2]u32 = {u32(size.x), u32(size.y)}
-    texture := upload_texture(copy_pass, pixels, size_u32)
-    assert(texture != nil)
+    texture := rd.load_texture(pixels, size_u32.x, size_u32.y)
     free_pixels(pixels)
 
     file_name  := strings.split(path, "/", context.temp_allocator)
@@ -73,89 +72,6 @@ load_sprite :: proc(path: string, copy_pass: ^sdl.GPUCopyPass) -> Sprite {
     }
 }
 
-load_sprite_sheet :: proc(path: string, copy_pass: ^sdl.GPUCopyPass) -> SpriteSheet {
-    pixels, size := load_pixels_byte(path)
-    defer stbi.image_free(raw_data(pixels))
-    width  := size.x
-    height := size.y
-
-    horizontal_segments: [dynamic][2]i32
-    defer delete(horizontal_segments)
-    {
-        non_empty_streak: i32
-        start: i32
-        for row: i32 = 0; row < height; row += 1 {
-            row_is_empty := true
-
-            row_start := row * width * 4
-
-            for col: i32 = 0; col < width; col += 1 {
-                alpha := pixels[row_start + col*4 + 3]
-
-                if alpha > 2 {
-                    row_is_empty = false
-                    break
-                }
-            }
-
-            if !row_is_empty {
-                if non_empty_streak == 0 do start = row
-                non_empty_streak += 1
-            } else {
-                if non_empty_streak > 3 {
-                    segment: [2]i32 = {start, row}
-                    append(&horizontal_segments, segment)
-                }
-                non_empty_streak = 0
-            }
-        }
-    }
-    rects: [dynamic]Rect
-    for segment, i in horizontal_segments {
-        start: i32 = -1
-        end: i32   = -1
-        empty_streak: int
-        for col in 0..<width {
-            empty_column := true
-            for row in segment.x..<segment.y {
-                index := (row * width + col) * 4
-                alpha := pixels[index+3]
-                if alpha > 5 {
-                    empty_column = false
-                    break
-                } 
-            }
-            if empty_column {
-                if start != -1 && end != -1 && empty_streak > 12 || (col == width - 1 && end == -1 && start != -1) {
-                    // if i == 2 do log.debugf("upper: %d, lower: %d, left: %d, right: %d", segment.x, segment.y, start, end)
-                    append(&rects, Rect{
-                        f32(start),
-                        f32(segment.x),
-                        f32(end - start),
-                        f32(segment.y - segment.x)
-                    })
-                    start = -1
-                    end   = -1
-                }
-                if empty_streak == 0 do end = col
-                empty_streak += 1
-            } else {
-                if start == -1 do start = col
-                empty_streak = 0
-            }
-
-
-        }
-    }
-
-    sheet: SpriteSheet
-    sheet.texture = upload_texture(copy_pass, pixels, {u32(size.x), u32(size.y)})
-    assert(sheet.texture != nil)
-    sheet.rects = rects[:]
-    sheet.size = {width, height}
-    return sheet
-}
-
 load_scene :: proc(savefile_path: string) -> Scene {
     save_file := load_save_file(savefile_path)
     defer free_save_file(save_file)
@@ -163,7 +79,7 @@ load_scene :: proc(savefile_path: string) -> Scene {
     reset_player_pos()
     scene: Scene
     for asset in save_file.assets {
-        model := load_obj_model(save_file.assets[asset])
+        model := load_model(save_file.assets[asset])
         append(&scene.models, model)
         for instance in save_file.instances {
             if instance.asset == asset {
@@ -207,26 +123,6 @@ load_pixels_byte :: proc(path: string, loc := #caller_location) -> (pixels: []by
 free_pixels_byte :: proc (pixels: []byte) {stbi.image_free(raw_data(pixels))}
 free_pixels_u16  :: proc (pixels: []u16)  {stbi.image_free(raw_data(pixels))}
 free_pixels :: proc {free_pixels_byte, free_pixels_u16}
-
-load_cubemap_texture :: proc(
-    copy_pass: ^sdl.GPUCopyPass, 
-    paths: [sdl.GPUCubeMapFace]string
-) -> ^sdl.GPUTexture {
-    pixels: [sdl.GPUCubeMapFace][]byte
-    size: u32
-    for path, side in paths {
-        side_pixels, img_size := load_pixels_byte(path)
-        assert(side_pixels != nil)
-        pixels[side] = side_pixels
-        assert(img_size.x == img_size.y)
-        if size == 0 do size = u32(img_size.x) 
-        else do assert(u32(img_size.x) == size)
-    }
-    texture := upload_cubemap_texture_sides(copy_pass, pixels, size)
-    for side_pixels in pixels do free_pixels(side_pixels)
-    return texture
-}
-
 
 load_pixels_u16 :: proc(path: string) -> (pixels: []u16, size: [2]i32) {
     path_cstr := strings.clone_to_cstring(path, context.temp_allocator);

@@ -28,19 +28,7 @@ vector_normalize :: proc(v: ^vec3) -> f32 {
     return length
 }
 
-create_frustum_planes :: proc "contextless" (vp: mat4) -> [6]vec4 {
-    t := linalg.transpose(vp)
-    return {
-        t[3]+t[0],
-        t[3]+t[0],
-        t[3]+t[1],
-        t[3]+t[1],
-        t[3]+t[2],
-        t[3]+t[2],
-    }
-}
-
-aabb_intersects_frustum :: #force_inline proc(frustum_planes: [6]vec4, aabb: AABB) -> bool #no_bounds_check {
+aabb_intersects_frustum :: #force_inline proc(frustum_planes: [6]vec4, aabb: AABB) -> bool {
     p_vertex: vec3
     for p in frustum_planes {
         p_vertex = {

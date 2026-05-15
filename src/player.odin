@@ -2,8 +2,7 @@ package obj_viewer
 
 import "core:math"
 import lg "core:math/linalg"
-import "core:fmt"
-import sdl "vendor:sdl3"
+import rd "../../Redef/src"
 
 Player :: struct {
     position,
@@ -15,8 +14,8 @@ Player :: struct {
     checkpoint: [2]vec3,                // Position, Rotation
 }
 
-create_player :: proc(pos: vec3 = 0) -> Player {
-    return Player {
+create_player :: proc(pos: vec3 = 0) {
+    g.player = {
         position = pos,
         bbox = AABB {
             min = pos + {-0.3, 0, -0.3},
@@ -32,9 +31,10 @@ get_player_translation :: proc() -> [2]vec3 {
     }
 }
 
-update_player :: proc(scene: Scene, dt: f32) {
+update_player :: proc(scene: Scene) {
     G :: 25
     p := &g.player
+    dt := g.dt
     wishveloc := player_wish_speed()
     airborne_at_start := p.airborne
     if p.noclip {
@@ -62,8 +62,8 @@ update_player :: proc(scene: Scene, dt: f32) {
 
     found_collision: bool
     
-    win_size := get_window_size()
-    ray_origin, ray_dir := ray_from_screen(g.fps_camera, win_size/2, win_size)
+    win_size := rd.get_window_size()
+    ray_origin, ray_dir := ray_from_screen(g.camera, win_size/2, win_size)
     closest_hit: f32 = math.F32_MAX
     closest_entity: EntityID = -1
 
@@ -87,7 +87,7 @@ update_player :: proc(scene: Scene, dt: f32) {
                 p.bbox.min += mtv
                 p.bbox.max += mtv
             }
-            if g.mb_click == .LEFT {
+            if g.lmb_click {
                 intersection := ray_intersect_aabb(ray_origin, ray_dir, aabb)
                 if intersection != -1 && intersection < closest_hit {
                     closest_hit = intersection
@@ -107,10 +107,10 @@ update_player :: proc(scene: Scene, dt: f32) {
         if lg.length(p.speed.xz) > 20 do p.speed.xz *= 0.9
     }
 
-    if g.mb_click == .LEFT {
+    if g.lmb_click {
         for &e, i in scene.entities {
             if e.id == closest_entity {
-                g.editor.selected_entity = e.id
+                g.selected = e.id
                 break
             }
         }
@@ -118,8 +118,7 @@ update_player :: proc(scene: Scene, dt: f32) {
 }
 
 update_player_camera :: proc(camera: ^Camera) {
-    x, y: f32
-    _ = sdl.GetRelativeMouseState(&x, &y)
+    x, y := rd.get_relative_mouse_movement()
     g.player.rotation.y += x * 0.03
     g.player.rotation.x = math.min(g.player.rotation.x + y*0.03, 90)
     if g.player.rotation.x < -90 do g.player.rotation.x = -90
@@ -130,13 +129,11 @@ update_player_camera :: proc(camera: ^Camera) {
 }
 
 player_wish_speed :: proc() -> vec3 {
-    key_state := sdl.GetKeyboardState(nil)
     wish_speed: vec3
-    sc :: sdl.Scancode
-    u := f32(int(key_state[sc.SPACE]))
-    d := f32(int(key_state[sc.LCTRL]))
-    fb := f32(int(key_state[sc.S])-int(key_state[sc.W]))
-    lr := f32(int(key_state[sc.D])-int(key_state[sc.A]))
+    u := f32(int(rd.is_key_down(.SPACE)))
+    d := f32(int(rd.is_key_down(.LCONTROL)))
+    fb := f32(int(rd.is_key_down(.S))-int(rd.is_key_down(.W)))
+    lr := f32(int(rd.is_key_down(.D))-int(rd.is_key_down(.A)))
 
     yaw_cos := math.cos(math.to_radians(g.player.rotation.y))
     yaw_sin := math.sin(math.to_radians(g.player.rotation.y))
