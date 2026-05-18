@@ -4,9 +4,9 @@ struct Input {
 };
 
 struct Output {
-    float4 clip_position : SV_Position;
     float2 uv            : uv;
     float4 color         : color;
+    float4 clip_position : SV_Position;
 };
 
 cbuffer UBO {

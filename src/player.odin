@@ -2,7 +2,7 @@ package obj_viewer
 
 import "core:math"
 import lg "core:math/linalg"
-import rd "../../Redef/src"
+import rd "../Redef/src"
 
 Player :: struct {
     position,
@@ -21,6 +21,7 @@ create_player :: proc(pos: vec3 = 0) {
             min = pos + {-0.3, 0, -0.3},
             max = pos + {0.3, 2.0, 0.3}
         },
+        noclip = true
     }
 }
 
@@ -39,7 +40,7 @@ update_player :: proc(scene: Scene) {
     airborne_at_start := p.airborne
     if p.noclip {
         p.speed = 0
-        delta_pos := wishveloc * dt * 20
+        delta_pos := wishveloc * dt * 10
         p.position += delta_pos
         p.bbox.min += delta_pos
         p.bbox.max += delta_pos
@@ -67,36 +68,36 @@ update_player :: proc(scene: Scene) {
     closest_hit: f32 = math.F32_MAX
     closest_entity: EntityID = -1
 
-    for &entity in scene.entities {
-        aabbs := entity_aabbs(entity)
-        for aabb in aabbs {
-            if aabbs_collide(p.bbox, aabb) && !p.noclip {
-                found_collision = true
-                mtv := resolve_aabb_collision_mtv(p.bbox, aabb)
-                for axis, j in mtv do if axis != 0 {
-                    p.speed[j] *= 0.9
-                    if j == 1 { 
-                        if axis > 0 { // This means we are standing on a block
-                            p.airborne = false
-                        } else {
-                            p.speed.y = -0.1
-                        }
-                    }
-                }
-                p.position += mtv
-                p.bbox.min += mtv
-                p.bbox.max += mtv
-            }
-            if g.lmb_click {
-                intersection := ray_intersect_aabb(ray_origin, ray_dir, aabb)
-                if intersection != -1 && intersection < closest_hit {
-                    closest_hit = intersection
-                    closest_entity = entity.id
-                }
-            }
+    // for &entity in scene.entities {
+    //     aabbs := entity_aabbs(entity)
+    //     for aabb in aabbs {
+    //         if aabbs_collide(p.bbox, aabb) && !p.noclip {
+    //             found_collision = true
+    //             mtv := resolve_aabb_collision_mtv(p.bbox, aabb)
+    //             for axis, j in mtv do if axis != 0 {
+    //                 p.speed[j] *= 0.9
+    //                 if j == 1 { 
+    //                     if axis > 0 { // This means we are standing on a block
+    //                         p.airborne = false
+    //                     } else {
+    //                         p.speed.y = -0.1
+    //                     }
+    //                 }
+    //             }
+    //             p.position += mtv
+    //             p.bbox.min += mtv
+    //             p.bbox.max += mtv
+    //         }
+    //         if g.lmb_click {
+    //             intersection := ray_intersect_aabb(ray_origin, ray_dir, aabb)
+    //             if intersection != -1 && intersection < closest_hit {
+    //                 closest_hit = intersection
+    //                 closest_entity = entity.id
+    //             }
+    //         }
 
-        }
-    }
+    //     }
+    // }
     if !p.noclip {
         if !found_collision do p.airborne = true
 
@@ -117,10 +118,11 @@ update_player :: proc(scene: Scene) {
     }
 }
 
-update_player_camera :: proc(camera: ^Camera) {
+update_camera :: proc() {
+    camera := &g.camera
     x, y := rd.get_relative_mouse_movement()
-    g.player.rotation.y += x * 0.03
-    g.player.rotation.x = math.min(g.player.rotation.x + y*0.03, 90)
+    g.player.rotation.y += x * 0.1
+    g.player.rotation.x = math.min(g.player.rotation.x + y*0.1, 90)
     if g.player.rotation.x < -90 do g.player.rotation.x = -90
     camera.pitch = g.player.rotation.x
     camera.yaw = g.player.rotation.y
@@ -131,7 +133,7 @@ update_player_camera :: proc(camera: ^Camera) {
 player_wish_speed :: proc() -> vec3 {
     wish_speed: vec3
     u := f32(int(rd.is_key_down(.SPACE)))
-    d := f32(int(rd.is_key_down(.LCONTROL)))
+    d := f32(int(rd.is_key_down(.CONTROL)))
     fb := f32(int(rd.is_key_down(.S))-int(rd.is_key_down(.W)))
     lr := f32(int(rd.is_key_down(.D))-int(rd.is_key_down(.A)))
 

@@ -1,23 +1,16 @@
 package obj_viewer
 
-import "core:reflect"
-import "core:mem"
+
 import lg "core:math/linalg"
 import "core:log"
-import "core:strings"
-import "core:c"
-import "core:os"
-import "core:path/filepath"
-import "core:encoding/json"
 import "base:runtime"
-import rd "../../Redef/src"
-// import sdl "vendor:sdl3"
+import rd "../Redef/src"
+
 
 PointLight :: struct {
     position: vec3,
     power:    f32,
     color:    vec3,
-    _:        f32
 }
 
 
@@ -29,15 +22,10 @@ FragUBOGlobal :: struct {
     view_pos: vec3,
 }
 
-VertUBOGlobal :: struct {
-	vp,
-	inv_view_mat,
-	inv_projection_mat: mat4,
-}
-
-VertUBOLocal :: struct {
-    model_mat,
-    normal_mat: mat4
+GLTF_fragUBO :: struct {
+    base_color: vec4,
+    metallic_factor: f32,
+    roughness_factor: f32,
 }
 
 Frame :: struct {
@@ -51,16 +39,26 @@ Camera :: struct {
     fov:        f32
 }
 
-Renderer :: struct {
-    vs_ui:  rd.VertexShader,
-    ps_ui:  rd.PixelShader,
-    fallback_texture:  rd.Texture,
-    p_light:           PointLight,
-    crosshair:         Sprite,
-    quad:              Quad,
+Vertex :: struct {
+    position: vec3
 }
 
-shader_ui :: #load("../shaders/src/ui.hlsl")
+Renderer :: struct {
+    vs_ui:              rd.VertexShader,
+    ps_ui:              rd.PixelShader,
+
+    vs_gfx:             rd.VertexShader,
+    ps_gfx:             rd.PixelShader,
+
+    fallback_texture:   rd.Texture,
+    p_light:            PointLight,
+    crosshair:          Sprite,
+    quad:               Quad,
+}
+
+shader_ui   :: #load("../shaders/ui.hlsl")
+shader_gfx  :: #load("../shaders/gfx.hlsl")
+
 
 RND_Init :: proc() {
     r := &g.renderer
@@ -68,14 +66,41 @@ RND_Init :: proc() {
 
     r.quad = init_quad()
     r.crosshair = load_sprite("assets/crosshair.png")
+
     r.vs_ui, ok = rd.load_vertex_shader(shader_ui, "vs_main", Vertex2D); assert(ok)
     r.ps_ui, ok = rd.load_pixel_shader(shader_ui, "ps_main"); assert(ok)
+    
+    r.vs_gfx, ok = rd.load_vertex_shader(shader_gfx, "vs_main", Vertex); assert(ok)
+    r.ps_gfx, ok = rd.load_pixel_shader(shader_gfx, "ps_main"); assert(ok)
+
+    r.p_light = {
+        position = 0,
+        power = 100,
+        color = 1
+    }
+
+    rd.set_blend_mode(.Alpha)
 }
+
+create_frag_ubo :: proc() -> FragUBOGlobal {
+    camera_position := -g.player.position
+    camera_position.y -= 2
+    return FragUBOGlobal {
+        light_pos = g.renderer.p_light.position,
+        light_color = g.renderer.p_light.color,
+        light_intensity = g.renderer.p_light.power,
+        view_pos = camera_position
+    }
+}
+
+draw_entities :: proc(scene: ^Scene) {
+
+}
+
 
 toggle_fullscreen :: proc() {
     panic("TODO")
 }
-
 
 get_furustum_planes :: proc() -> [6]vec4 {
     camera := g.camera
@@ -179,9 +204,8 @@ draw_sprite :: proc(sprite: Sprite, pos: vec2 = 0, scale: f32 = 1) {
     rd.bind(&r.quad.vbo)
     rd.bind(&r.quad.ibo)
     rd.bind(&r.crosshair.texture)
-    rd.set_blend_mode(.Alpha)
     rd.push_constant_data(.Vertex, &ubo, 0)
-    rd.draw_indexed(6)
+    rd.draw_indexed(0, 6)
 }
 
 draw_rect :: proc(rect: Rect, color: vec4 = 0.2) {

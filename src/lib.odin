@@ -5,10 +5,7 @@ import "core:math/rand"
 import "core:log"
 import "base:runtime"
 import "core:time"
-import rd "../../Redef/src"
-
-// import im "shared:imgui"
-// import sdl "vendor:sdl3"
+import rd "../Redef/src"
 
 vec2 :: [2]f32
 vec3 :: [3]f32
@@ -37,10 +34,11 @@ g := struct {
     dt,
     fov:         f32,
     fullscreen,
-    debug_draw: bool,
+    running: bool
 
 } {
-    fov = 90
+    fov = 90,
+    running = true
 }
 
 
@@ -68,7 +66,7 @@ DebugInfo :: struct {
 
 
 Scene :: struct {
-    models:       [dynamic]Model,
+    assets:       [dynamic]Asset,
     entities: #soa[dynamic]Entity,
 }
 

@@ -1,0 +1,33 @@
+{
+	"checkpoint": [
+		[
+			9.14029408,
+			4.52974892,
+			1.66156137
+		],
+		[
+			14.10011578,
+			-42.32461166,
+			0.00000000
+		]
+	],
+	"assets": {
+		"CarConcept": "assets/DamagedHelmet.glb"
+	},
+	"instances": [
+		{
+			"asset": "DamagedHelmet",
+			"name": "DamagedHelmet-1",
+			"position": [
+				-50.00000000,
+				0.00000000,
+				-100.00000000
+			],
+			"scale": [
+				1.00000000,
+				1.00000000,
+				1.00000000
+			]
+		}
+	]
+}

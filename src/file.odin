@@ -8,7 +8,7 @@ import "core:log"
 import "core:os"
 import "core:encoding/json"
 import stbi "vendor:stb/image"
-import rd "../../Redef/src"
+import rd "../Redef/src"
 
 
 AssetInstance :: struct {
@@ -30,12 +30,13 @@ write_save_file :: proc(scene: Scene, loc := #caller_location) {
         assets = make(map[string]string, context.temp_allocator)
     }
     save.checkpoint = g.player.checkpoint
-    for a in scene.models {
+    for a in scene.assets {
         save.assets[a.name] = a.path
     }
+
     for e, i in scene.entities {
         save.instances[i] = AssetInstance {
-            asset    = e.model.name,
+            asset    = e.asset.name,
             name     = e.name,
             position = e.transform.translation,
             scale    = e.transform.scale
@@ -50,7 +51,7 @@ write_save_file :: proc(scene: Scene, loc := #caller_location) {
         allocator = context.temp_allocator
     )
     assert(err == nil)
-    write_err := os.write_entire_file("savefile.json", json_data)
+    write_err := os.write_entire_file("out/savefile.json", json_data)
     assert(err == nil)
     fmt.printfln("%v: Save file writing successful", loc)
 }
@@ -78,12 +79,12 @@ load_scene :: proc(savefile_path: string) -> Scene {
     g.player.checkpoint = save_file.checkpoint
     reset_player_pos()
     scene: Scene
-    for asset in save_file.assets {
-        model := load_model(save_file.assets[asset])
-        append(&scene.models, model)
+    for asset_name in save_file.assets {
+        asset := load_asset(save_file.assets[asset_name])
+        append(&scene.assets, asset)
         for instance in save_file.instances {
-            if instance.asset == asset {
-                entity_id, ok := entity_from_model(&scene, asset, instance.name); assert(ok)
+            if instance.asset == asset_name {
+                entity_id, ok := entity_from_asset(&scene, asset_name, instance.name); assert(ok)
                 set_entity_transform(&scene, entity_id, instance.position, instance.scale)
             }
         }

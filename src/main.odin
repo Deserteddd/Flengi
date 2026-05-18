@@ -2,37 +2,37 @@ package obj_viewer
 
 import "base:runtime"
 import "core:log"
-import "core:math/linalg"
 import "core:time"
-import rd "../../Redef/src"
-
-default_context: runtime.Context
+import rd "../Redef/src"
 
 main :: proc() {
     context.logger = log.create_console_logger()
     init()
     log.debugf("Program initialized successfully")
-    scene := load_scene("savefile")
-    run(&scene)
+    // scene := load_scene("out/savefile")
+    run(nil)
 }
 
 init :: proc() {
-    default_context = context
-
-    ok := rd.create_window("Demo window", 1280, 720, true); assert(ok)
-    // Set relative mouse mode
+    ok := rd.create_window("Demo window", 1280, 720, ODIN_DEBUG); assert(ok)
+    rd.set_relative_mouse_mode()
 
     RND_Init()
-
     create_player()
     g.camera.fov = 90
 }
 
 run :: proc(scene: ^Scene) {
+    now := time.now()
     main_loop: for {
         defer {
             free_all(context.temp_allocator)
             g.frame += 1
+            g.lmb_click = false
+            // if g.frame % 100 == 0 {
+            //     log.debug(time.duration_microseconds(time.since(now))/100000)
+            //     now = time.now()
+            // }
         }
 
         g.dt = f32(rd.get_dt() / 1000)
@@ -43,6 +43,11 @@ run :: proc(scene: ^Scene) {
                     break main_loop
                 case rd.KeyboardEvent: 
                     #partial switch ev.key {
+                        case .ESCAPE:
+                            if ev.type == .KeyDown {
+                                g.running = !g.running
+                                rd.set_relative_mouse_mode(g.running)
+                            } 
                         case .F11: toggle_fullscreen()
                     }
                     append(&key_presses, ev)
@@ -52,8 +57,9 @@ run :: proc(scene: ^Scene) {
             }
         }
 
-        // if update(scene, key_presses) do break main_loop
+        if update(scene, key_presses) do break main_loop
         rd.clear({0.2, 0.2, 0.2, 1})
+        draw_entities(scene)
         draw_sprite(g.renderer.crosshair)
         rd.frame_end()
     }
@@ -61,8 +67,9 @@ run :: proc(scene: ^Scene) {
 
 update :: proc(scene: ^Scene, keys: KeyboardEvents) -> (exit: bool) {
     for elem in 0..<len(keys) {
-        key := keys[elem].key
-        mod := keys[elem].mod
+        if keys[elem].type != .KeyDown do continue
+        key  := keys[elem].key
+        mod  := keys[elem].mod
         #partial switch key {
             case .C:
                 if .CONTROL in mod do return true
@@ -72,13 +79,18 @@ update :: proc(scene: ^Scene, keys: KeyboardEvents) -> (exit: bool) {
                 reset_player_pos()
                 g.player.noclip = false
             case .N: g.player.noclip = !g.player.noclip
+                log.debug(g.player.noclip)
+            case .S: 
+                if .CONTROL in mod do write_save_file(scene^)
         }
     }
     if g.lmb_click {
         spawn(scene, true)
     }
-    update_player(scene^)
-    update_player_camera(&g.camera)
+    if g.running {
+        update_camera()
+        update_player(scene^)
+    }
 
     g.renderer.p_light.position = g.player.position + {0, 1, 0}
     return
