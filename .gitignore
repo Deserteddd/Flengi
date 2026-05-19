@@ -1,10 +1,12 @@
-/*.exe
 /*.pdb
+/out/*.exe
 /out/*.rdi
+/out/*.pdb
 /ols.json
 /assets/loader
-/assets/model_in
+/assets/model_in/*
 /assets/images/skybox
+/assets/*.bin
 /.VSCodeCounter
 /Redef
 /*.gz

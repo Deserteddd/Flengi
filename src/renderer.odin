@@ -18,12 +18,7 @@ FragUBOGlobal :: struct {
     light_color: vec3,
     light_intensity: f32,
     view_pos: vec3,
-}
-
-GLTF_fragUBO :: struct {
-    base_color: vec4,
-    metallic_factor: f32,
-    roughness_factor: f32,
+    _: f32,
 }
 
 Frame :: struct {
@@ -42,7 +37,7 @@ Renderable :: struct {
     ibo:            rd.IndexBuffer,
     materials:      rd.StructuredBuffer,
     textures:       rd.TextureBuffer,
-    primitives:     ^[]Primitive,
+    primitives:     []Primitive,
 }
 
 Renderer :: struct {
@@ -77,20 +72,18 @@ RND_Init :: proc() {
 
     r.p_light = {
         position = 0,
-        power = 100,
+        power = 1000,
         color = 1
     }
 
 }
 
-create_frag_ubo :: proc() -> FragUBOGlobal {
-    camera_position := -g.player.position
-    camera_position.y -= 2
+create_frag_ubo :: #force_inline proc() -> FragUBOGlobal {
     return FragUBOGlobal {
+        view_pos = g.camera.position,
         light_pos = g.renderer.p_light.position,
         light_color = g.renderer.p_light.color,
         light_intensity = g.renderer.p_light.power,
-        view_pos = camera_position
     }
 }
 
@@ -102,6 +95,9 @@ draw_entities :: proc(scene: ^Scene) {
     view_matrix := create_view_matrix(g.camera)
     vp := proj_matrix * view_matrix
     rd.push_constant_data(.Vertex, &vp, 0)
+
+    frag_ubo := create_frag_ubo()
+    rd.push_constant_data(.Pixel, &frag_ubo, 0)
     for &ro in scene.renderables {
         rd.bind(&ro.textures, 0)
         rd.bind(&ro.materials, 1)
@@ -115,9 +111,8 @@ draw_entities :: proc(scene: ^Scene) {
                 entity.physics.scale
             )
             rd.push_constant_data(.Vertex, &model_matrix, 1)
-            previous_id: u32 = 1 << 31
             for &primitive in ro.primitives {
-                rd.push_constant_data(.Pixel, &primitive.material_id, 0)
+                rd.push_constant_data(.Pixel, &primitive.material_id, 1)
                 rd.draw_indexed(primitive.index_start, primitive.index_count)
             }
         }

@@ -28,14 +28,15 @@ init :: proc(scene: ^Scene) {
         }
     }
     create_player()
-    for i in 0..<2000 {
+    for i in 0..<1000 {
         mappi, mappi_ok := entity_from_asset(scene, "mappi"); assert(mappi_ok)
         
         rnd := rand.float32_normal(1, 1)
+        if rnd <= 0 do rnd = 0.1
         set_entity_transform(scene, mappi, {
-            rand.float32_normal(0, 100),
-            rand.float32_normal(0, 100),
-            rand.float32_normal(0, 100),
+            rand.float32_normal(0, 50),
+            rand.float32_normal(0, 50),
+            rand.float32_normal(0, 50),
         }, {rnd, rnd, rnd})
 
     }
@@ -47,7 +48,7 @@ create_render_object :: proc(asset: ^Asset) -> Renderable {
     ro: Renderable
     ro.vbo = rd.create_vertex_buffer(asset.data.vertices)
     ro.ibo = rd.create_index_buffer(asset.data.indices)
-    ro.primitives = &asset.data.primitives
+    ro.primitives = asset.data.primitives
     ro.materials = rd.create_structured_buffer(asset.data.materials, {.Pixel})
 
     pixels: [dynamic][]byte
@@ -63,6 +64,7 @@ create_render_object :: proc(asset: ^Asset) -> Renderable {
     return ro
 }
 
+import "core:mem"
 run :: proc(scene: ^Scene) {
     now := time.now()
     main_loop: for {
@@ -70,10 +72,10 @@ run :: proc(scene: ^Scene) {
             free_all(context.temp_allocator)
             g.frame += 1
             g.lmb_click = false
-            if g.frame % 10 == 0 {
-                log.debug(time.duration_milliseconds(time.since(now))/10)
-                now = time.now()
-            }
+            // if g.frame % 10 == 0 {
+            //     log.debug(time.duration_milliseconds(time.since(now))/10)
+            //     now = time.now()
+            // }
         }
 
         g.dt = f32(rd.get_dt() / 1000)
