@@ -20,46 +20,53 @@ AssetInstance :: struct {
 
 SaveFile :: struct {
     checkpoint: [2]vec3,
-    assets:    map[string]string, // name, path
-    instances: []AssetInstance
+    assets:     map[string]string, // name, path
+    entities:   []EntitySerialized
 }
 
-write_save_file :: proc(scene: Scene, loc := #caller_location) {
-    save: SaveFile = {
-        instances = make([]AssetInstance, len(scene.entities), context.temp_allocator),
-        assets = make(map[string]string, context.temp_allocator)
-    }
-    save.checkpoint = g.player.checkpoint
-    for a in scene.assets {
-        save.assets[a.name] = a.path
-    }
-
-    for e, i in scene.entities {
-        save.instances[i] = AssetInstance {
-            asset    = e.asset.name,
-            name     = e.name,
-            position = e.transform.translation,
-            scale    = e.transform.scale
-        }
-    }
-    json_data, err := json.marshal(
-        save, 
-        opt = {
-            pretty = true,
-            mjson_keys_use_quotes = true
-        },
-        allocator = context.temp_allocator
-    )
-    assert(err == nil)
-    write_err := os.write_entire_file("out/savefile.json", json_data)
-    assert(err == nil)
-    fmt.printfln("%v: Save file writing successful", loc)
+EntitySerialized :: struct {
+    id: EntityID,
+    name: string,
+    asset: string,
+    physics: Physics
 }
 
-load_sprite :: proc(path: string) -> Sprite {
+// write_save_file :: proc(scene: Scene, loc := #caller_location) {
+//     save: SaveFile = {
+//         instances = make([]AssetInstance, len(scene.entities), context.temp_allocator),
+//         assets = make(map[string]string, context.temp_allocator)
+//     }
+//     save.checkpoint = g.player.checkpoint
+//     for a in scene.assets {
+//         save.assets[a.name] = a.path
+//     }
+
+//     for e, i in scene.entities {
+//         save.instances[i] = AssetInstance {
+//             asset    = e.name, // TODO: fix this
+//             name     = e.name,
+//             position = e.transform.translation,
+//             scale    = e.transform.scale
+//         }
+//     }
+//     json_data, err := json.marshal(
+//         save, 
+//         opt = {
+//             pretty = true,
+//             mjson_keys_use_quotes = true
+//         },
+//         allocator = context.temp_allocator
+//     )
+//     assert(err == nil)
+//     write_err := os.write_entire_file("out/savefile.json", json_data)
+//     assert(err == nil)
+//     fmt.printfln("%v: Save file writing successful", loc)
+// }
+
+load_sprite :: proc(path: string, loc := #caller_location) -> Sprite {
     pixels, size := load_pixels_byte(path); assert(pixels != nil)
     size_u32: [2]u32 = {u32(size.x), u32(size.y)}
-    texture := rd.load_texture(pixels, size_u32.x, size_u32.y)
+    texture := rd.create_texture(pixels, size_u32.x, size_u32.y)
     free_pixels(pixels)
 
     file_name  := strings.split(path, "/", context.temp_allocator)
@@ -71,25 +78,6 @@ load_sprite :: proc(path: string) -> Sprite {
         texture,
         size
     }
-}
-
-load_scene :: proc(savefile_path: string) -> Scene {
-    save_file := load_save_file(savefile_path)
-    defer free_save_file(save_file)
-    g.player.checkpoint = save_file.checkpoint
-    reset_player_pos()
-    scene: Scene
-    for asset_name in save_file.assets {
-        asset := load_asset(save_file.assets[asset_name])
-        append(&scene.assets, asset)
-        for instance in save_file.instances {
-            if instance.asset == asset_name {
-                entity_id, ok := entity_from_asset(&scene, asset_name, instance.name); assert(ok)
-                set_entity_transform(&scene, entity_id, instance.position, instance.scale)
-            }
-        }
-    }
-    return scene
 }
 
 load_save_file :: proc(path: string) -> SaveFile {
@@ -104,16 +92,53 @@ load_save_file :: proc(path: string) -> SaveFile {
     return result
 }
 
+load_scene :: proc(path: string) -> Scene {
+    entity_from_serialized :: proc(assets: ^[]Asset, serialized: EntitySerialized) -> Entity {
+        entity: Entity
+        entity.id = serialized.id
+        entity.name = serialized.name
+        entity.physics = serialized.physics
+        for &asset in assets {
+            if asset.name == serialized.asset {
+                entity.asset = &asset
+                break
+            }
+        }
+        
+        return entity
+    }
+    scene: Scene
+    save_file := load_save_file(path)
+    defer free_save_file(save_file)
+
+    assets: [dynamic]Asset
+    for asset, path in save_file.assets {
+        data := load_asset_data(path)
+        append(&assets, Asset {
+            asset,
+            path,
+            data
+        })
+    }
+    scene.assets = assets[:]
+    
+    for entity in save_file.entities {
+        append(&scene.entities, entity_from_serialized(&scene.assets, entity))
+    }
+
+    return scene
+}
+
 free_save_file :: proc(savefile: SaveFile) {
     delete(savefile.assets)
-    delete(savefile.instances)
+    delete(savefile.entities)
 }
 
 load_pixels_byte :: proc(path: string, loc := #caller_location) -> (pixels: []byte, size: [2]i32) {
     path_cstr := strings.clone_to_cstring(path, context.temp_allocator);
     pixel_data := stbi.load(path_cstr, &size.x, &size.y, nil, 4)
     if pixel_data == nil {
-        log.errorf("%v: Pixel data nill", loc)
+        log.errorf("%v: Pixel data nill", path, location = loc)
         panic("")
     }
     pixels = slice.bytes_from_ptr(pixel_data, int(size.x * size.y * 4))

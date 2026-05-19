@@ -1,7 +1,11 @@
 /*.exe
 /*.pdb
-/*.rdi
+/out/*.rdi
 /ols.json
-/assets/*/.blend*
+/assets/loader
+/assets/model_in
+/assets/images/skybox
 /.VSCodeCounter
 /Redef
+/*.gz
+/shaders/src

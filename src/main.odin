@@ -3,23 +3,64 @@ package obj_viewer
 import "base:runtime"
 import "core:log"
 import "core:time"
+import rand "core:math/rand"
 import rd "../Redef/src"
 
 main :: proc() {
     context.logger = log.create_console_logger()
-    init()
+    scene := load_scene("out/savefile")
+    init(&scene)
     log.debugf("Program initialized successfully")
-    // scene := load_scene("out/savefile")
-    run(nil)
+    run(&scene)
 }
 
-init :: proc() {
+init :: proc(scene: ^Scene) {
     ok := rd.create_window("Demo window", 1280, 720, ODIN_DEBUG); assert(ok)
     rd.set_relative_mouse_mode()
-
     RND_Init()
+    scene.renderables = make([]Renderable, len(scene.assets)) 
+    for &asset, i in scene.assets {
+        scene.renderables[i] = create_render_object(&asset)
+        for &entity in scene.entities {
+            if entity.asset == &asset {
+                entity.renderable = &scene.renderables[i]
+            }
+        }
+    }
     create_player()
+    for i in 0..<2000 {
+        mappi, mappi_ok := entity_from_asset(scene, "mappi"); assert(mappi_ok)
+        
+        rnd := rand.float32_normal(1, 1)
+        set_entity_transform(scene, mappi, {
+            rand.float32_normal(0, 100),
+            rand.float32_normal(0, 100),
+            rand.float32_normal(0, 100),
+        }, {rnd, rnd, rnd})
+
+    }
     g.camera.fov = 90
+}
+
+create_render_object :: proc(asset: ^Asset) -> Renderable {
+    assert(asset != nil)
+    ro: Renderable
+    ro.vbo = rd.create_vertex_buffer(asset.data.vertices)
+    ro.ibo = rd.create_index_buffer(asset.data.indices)
+    ro.primitives = &asset.data.primitives
+    ro.materials = rd.create_structured_buffer(asset.data.materials, {.Pixel})
+
+    pixels: [dynamic][]byte
+    width, height: u32
+    for tex_info, i in asset.data.textures {
+        img := asset.data.images[i]
+        width = tex_info.width
+        height = tex_info.height
+        append(&pixels, img)
+    }
+    ro.textures = rd.create_texture_buffer(pixels[:], width, height)
+    
+    return ro
 }
 
 run :: proc(scene: ^Scene) {
@@ -29,10 +70,10 @@ run :: proc(scene: ^Scene) {
             free_all(context.temp_allocator)
             g.frame += 1
             g.lmb_click = false
-            // if g.frame % 100 == 0 {
-            //     log.debug(time.duration_microseconds(time.since(now))/100000)
-            //     now = time.now()
-            // }
+            if g.frame % 10 == 0 {
+                log.debug(time.duration_milliseconds(time.since(now))/10)
+                now = time.now()
+            }
         }
 
         g.dt = f32(rd.get_dt() / 1000)
@@ -80,12 +121,13 @@ update :: proc(scene: ^Scene, keys: KeyboardEvents) -> (exit: bool) {
                 g.player.noclip = false
             case .N: g.player.noclip = !g.player.noclip
                 log.debug(g.player.noclip)
-            case .S: 
-                if .CONTROL in mod do write_save_file(scene^)
+            // case .S: 
+            //     if .CONTROL in mod do write_save_file(scene^)
+            case .NUM1: spawn(scene, 0, false)
+            case .NUM2: spawn(scene, 1, false)
+            case .NUM3: spawn(scene, 2, false)
+            case .NUM4: spawn(scene, 3, false)
         }
-    }
-    if g.lmb_click {
-        spawn(scene, true)
     }
     if g.running {
         update_camera()

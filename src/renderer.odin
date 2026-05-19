@@ -6,13 +6,11 @@ import "core:log"
 import "base:runtime"
 import rd "../Redef/src"
 
-
 PointLight :: struct {
     position: vec3,
     power:    f32,
     color:    vec3,
 }
-
 
 FragUBOGlobal :: struct {
     light_pos: vec3,
@@ -39,8 +37,12 @@ Camera :: struct {
     fov:        f32
 }
 
-Vertex :: struct {
-    position: vec3
+Renderable :: struct {
+    vbo:            rd.VertexBuffer,
+    ibo:            rd.IndexBuffer,
+    materials:      rd.StructuredBuffer,
+    textures:       rd.TextureBuffer,
+    primitives:     ^[]Primitive,
 }
 
 Renderer :: struct {
@@ -59,19 +61,19 @@ Renderer :: struct {
 shader_ui   :: #load("../shaders/ui.hlsl")
 shader_gfx  :: #load("../shaders/gfx.hlsl")
 
-
 RND_Init :: proc() {
     r := &g.renderer
     ok: bool
 
     r.quad = init_quad()
-    r.crosshair = load_sprite("assets/crosshair.png")
+    r.crosshair = load_sprite("assets/images/crosshair.png")
 
     r.vs_ui, ok = rd.load_vertex_shader(shader_ui, "vs_main", Vertex2D); assert(ok)
     r.ps_ui, ok = rd.load_pixel_shader(shader_ui, "ps_main"); assert(ok)
-    
+
     r.vs_gfx, ok = rd.load_vertex_shader(shader_gfx, "vs_main", Vertex); assert(ok)
     r.ps_gfx, ok = rd.load_pixel_shader(shader_gfx, "ps_main"); assert(ok)
+    
 
     r.p_light = {
         position = 0,
@@ -79,7 +81,6 @@ RND_Init :: proc() {
         color = 1
     }
 
-    rd.set_blend_mode(.Alpha)
 }
 
 create_frag_ubo :: proc() -> FragUBOGlobal {
@@ -94,7 +95,33 @@ create_frag_ubo :: proc() -> FragUBOGlobal {
 }
 
 draw_entities :: proc(scene: ^Scene) {
-
+    rd.set_blend_mode(.Opaque)
+    rd.bind(&g.renderer.vs_gfx)
+    rd.bind(&g.renderer.ps_gfx)
+    proj_matrix := create_proj_matrix(g.camera)
+    view_matrix := create_view_matrix(g.camera)
+    vp := proj_matrix * view_matrix
+    rd.push_constant_data(.Vertex, &vp, 0)
+    for &ro in scene.renderables {
+        rd.bind(&ro.textures, 0)
+        rd.bind(&ro.materials, 1)
+        rd.bind(&ro.vbo)
+        rd.bind(&ro.ibo)
+        for entity in scene.entities {
+            if entity.renderable != &ro do continue
+            model_matrix := lg.matrix4_from_trs(
+                entity.physics.position,
+                entity.physics.rotation,
+                entity.physics.scale
+            )
+            rd.push_constant_data(.Vertex, &model_matrix, 1)
+            previous_id: u32 = 1 << 31
+            for &primitive in ro.primitives {
+                rd.push_constant_data(.Pixel, &primitive.material_id, 0)
+                rd.draw_indexed(primitive.index_start, primitive.index_count)
+            }
+        }
+    }
 }
 
 
@@ -186,6 +213,7 @@ init_quad :: proc() -> Quad {
 }
 
 draw_sprite :: proc(sprite: Sprite, pos: vec2 = 0, scale: f32 = 1) {
+    rd.set_blend_mode(.Alpha)
     sprite := sprite
     win_size := rd.get_window_size()
 

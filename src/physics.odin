@@ -8,6 +8,14 @@ AABB :: struct {
     max: vec3
 }
 
+Physics :: struct {
+    dyn: bool,
+    position,
+    scale,
+    speed: vec3,
+    rotation: quaternion128
+}
+
 // entity_aabbs :: proc(entity: Entity) -> []AABB {
 //     aabbs := make([]AABB, len(entity.asset.aabbs), context.temp_allocator)
 //     for aabb, i in entity.asset.aabbs {

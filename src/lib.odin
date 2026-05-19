@@ -66,8 +66,9 @@ DebugInfo :: struct {
 
 
 Scene :: struct {
-    assets:       [dynamic]Asset,
-    entities: #soa[dynamic]Entity,
+    assets:           []Asset,
+    renderables:      []Renderable,
+    entities:     #soa[dynamic]Entity,
 }
 
 in_bounds :: proc(p: vec2, rect: Rect) -> bool {
