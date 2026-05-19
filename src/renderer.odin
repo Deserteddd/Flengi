@@ -21,6 +21,11 @@ FragUBOGlobal :: struct {
     _: f32,
 }
 
+SkyboxUBO :: struct {
+    inv_view,
+    inv_proj: matrix[4,4]f32
+}
+
 Frame :: struct {
     frustum_planes:     [6]vec4,
 }
@@ -47,14 +52,19 @@ Renderer :: struct {
     vs_gfx:             rd.VertexShader,
     ps_gfx:             rd.PixelShader,
 
+    vs_skybox:          rd.VertexShader,
+    ps_skybox:          rd.PixelShader,
+
     fallback_texture:   rd.Texture,
+    skybox_texture:     rd.TextureCube,
     p_light:            PointLight,
     crosshair:          Sprite,
     quad:               Quad,
 }
 
-shader_ui   :: #load("../shaders/ui.hlsl")
-shader_gfx  :: #load("../shaders/gfx.hlsl")
+shader_ui       :: #load("../shaders/ui.hlsl")
+shader_gfx      :: #load("../shaders/gfx.hlsl")
+shader_skybox   :: #load("../shaders/skybox.hlsl")
 
 RND_Init :: proc() {
     r := &g.renderer
@@ -69,10 +79,21 @@ RND_Init :: proc() {
     r.vs_gfx, ok = rd.load_vertex_shader(shader_gfx, "vs_main", Vertex); assert(ok)
     r.ps_gfx, ok = rd.load_pixel_shader(shader_gfx, "ps_main"); assert(ok)
     
+    r.vs_skybox, ok = rd.load_vertex_shader(shader_skybox, "vs_main", None); assert(ok)
+    r.ps_skybox, ok = rd.load_pixel_shader(shader_skybox, "ps_main"); assert(ok)
+
+    r.skybox_texture = load_cubemap_texture({
+        .PX = "assets/images/skybox/px.png",
+        .NX = "assets/images/skybox/nx.png",
+        .PY = "assets/images/skybox/py.png",
+        .NY = "assets/images/skybox/ny.png",
+        .PZ = "assets/images/skybox/pz.png",
+        .NZ = "assets/images/skybox/nz.png",
+    })
 
     r.p_light = {
         position = 0,
-        power = 1000,
+        power = 100,
         color = 1
     }
 
@@ -88,12 +109,13 @@ create_frag_ubo :: #force_inline proc() -> FragUBOGlobal {
 }
 
 draw_entities :: proc(scene: ^Scene) {
+    proj_matrix := create_proj_matrix(g.camera)
+    view_matrix := create_view_matrix(g.camera)
+
+    vp := proj_matrix * view_matrix
     rd.set_blend_mode(.Opaque)
     rd.bind(&g.renderer.vs_gfx)
     rd.bind(&g.renderer.ps_gfx)
-    proj_matrix := create_proj_matrix(g.camera)
-    view_matrix := create_view_matrix(g.camera)
-    vp := proj_matrix * view_matrix
     rd.push_constant_data(.Vertex, &vp, 0)
 
     frag_ubo := create_frag_ubo()
@@ -117,6 +139,16 @@ draw_entities :: proc(scene: ^Scene) {
             }
         }
     }
+
+    inv_view_mat := lg.inverse(view_matrix)
+    inv_proj_mat := lg.inverse(proj_matrix)
+
+    rd.set_blend_mode(.Skybox)
+    rd.bind(&g.renderer.vs_skybox)
+    rd.bind(&g.renderer.ps_skybox)
+    rd.bind(&g.renderer.skybox_texture)
+    rd.push_constant_data(.Vertex, &SkyboxUBO{inv_view_mat, inv_proj_mat}, 0)
+    rd.draw(3)
 }
 
 

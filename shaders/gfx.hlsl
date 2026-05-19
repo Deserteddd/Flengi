@@ -114,7 +114,7 @@ float3 get_normal(Output input, uint normal_tex) {
     float3 B = normalize(cross(N, T) * input.tangent.w);
     float3x3 TBN = float3x3(T, B, N);
     float3 normal_ts = tex_array.Sample(samp, float3(input.uv, normal_tex)).xyz * 2.0 - 1.0;
-    return normalize(mul(normal_ts, TBN));
+    return normalize(mul(normal_ts, TBN)) * float3(1, -1, -1);
 }
 
 float4 ps_main(Output input, bool is_front_face : SV_IsFrontFace) : SV_Target {
@@ -137,6 +137,7 @@ float4 ps_main(Output input, bool is_front_face : SV_IsFrontFace) : SV_Target {
     }
     metallic = saturate(metallic);
     roughness = saturate(roughness);
+
 
     float3 N = get_normal(input, mat.normal_tex);
     if (mat.double_sided != 0 && !is_front_face) {

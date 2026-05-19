@@ -28,20 +28,19 @@ init :: proc(scene: ^Scene) {
         }
     }
     create_player()
-    for i in 0..<1000 {
-        mappi, mappi_ok := entity_from_asset(scene, "mappi"); assert(mappi_ok)
+    // for i in 0..<500 {
+    //     mappi, mappi_ok := entity_from_asset(scene, "mappi"); assert(mappi_ok)
         
-        rnd := rand.float32_normal(1, 1)
-        if rnd <= 0 do rnd = 0.1
-        set_entity_transform(scene, mappi, {
-            rand.float32_normal(0, 50),
-            rand.float32_normal(0, 50),
-            rand.float32_normal(0, 50),
-        }, {rnd, rnd, rnd})
+    //     set_entity_transform(scene, mappi, {
+    //         rand.float32_normal(0, 100),
+    //         rand.float32_normal(0, 100),
+    //         rand.float32_normal(0, 100),
+    //     }, 1)
 
-    }
+    // }
     g.camera.fov = 90
 }
+
 
 create_render_object :: proc(asset: ^Asset) -> Renderable {
     assert(asset != nil)
@@ -64,7 +63,6 @@ create_render_object :: proc(asset: ^Asset) -> Renderable {
     return ro
 }
 
-import "core:mem"
 run :: proc(scene: ^Scene) {
     now := time.now()
     main_loop: for {
@@ -101,7 +99,7 @@ run :: proc(scene: ^Scene) {
         }
 
         if update(scene, key_presses) do break main_loop
-        rd.clear({0.2, 0.2, 0.2, 1})
+        rd.clear()
         draw_entities(scene)
         draw_sprite(g.renderer.crosshair)
         rd.frame_end()
@@ -136,7 +134,7 @@ update :: proc(scene: ^Scene, keys: KeyboardEvents) -> (exit: bool) {
         update_player(scene^)
     }
 
-    g.renderer.p_light.position = g.player.position + {0, 1, 0}
+    g.renderer.p_light.position = g.player.position + {0, 2, 0}
     return
 }
 

@@ -121,8 +121,10 @@ update_player :: proc(scene: Scene) {
 update_camera :: proc() {
     camera := &g.camera
     x, y := rd.get_relative_mouse_movement()
-    g.player.rotation.y += x * 0.1
-    g.player.rotation.x = math.min(g.player.rotation.x + y*0.1, 90)
+    x *= g.dt * g.mouse_sense
+    y *= g.dt * g.mouse_sense
+    g.player.rotation.y += x
+    g.player.rotation.x = math.min(g.player.rotation.x + y, 90)
     if g.player.rotation.x < -90 do g.player.rotation.x = -90
     camera.pitch = g.player.rotation.x
     camera.yaw = g.player.rotation.y

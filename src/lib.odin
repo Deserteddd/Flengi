@@ -12,6 +12,8 @@ vec3 :: [3]f32
 vec4 :: [4]f32
 mat4 :: matrix[4,4]f32
 
+None :: struct{}
+
 to_radians :: math.to_radians_f32
 round      :: math.round_f32
 pow        :: linalg.pow
@@ -31,6 +33,7 @@ g := struct {
     selected:    EntityID,
     lmb_click:   bool,
     frame:       uint,
+    mouse_sense,
     dt,
     fov:         f32,
     fullscreen,
@@ -38,6 +41,7 @@ g := struct {
 
 } {
     fov = 90,
+    mouse_sense = 16,
     running = true
 }
 

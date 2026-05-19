@@ -13,7 +13,7 @@
 	],
 	"assets": {
 		"mappi": "assets/mappi.bin",
-		"truck": "assets/CesiumMilkTruck.bin"
+        "helmet": "assets/DamagedHelmet.bin"
 	},
 	"entities": [
         {

@@ -146,6 +146,24 @@ load_pixels_byte :: proc(path: string, loc := #caller_location) -> (pixels: []by
     return
 }
 
+load_cubemap_texture :: proc(paths: [rd.CubeFace]string) -> rd.TextureCube {
+    pixels: [rd.CubeFace][]byte
+    size: u32
+    for path, side in paths {
+        side_pixels, img_size := load_pixels_byte(path)
+        assert(side_pixels != nil)
+        pixels[side] = side_pixels
+        assert(img_size.x == img_size.y)
+        if size == 0 do size = u32(img_size.x) 
+        else do assert(u32(img_size.x) == size)
+    }
+
+    // texture := upload_cubemap_texture_sides(copy_pass, pixels, size)
+    texture := rd.create_texture_cube(size, pixels)
+    for side_pixels in pixels do free_pixels(side_pixels)
+    return texture
+}
+
 free_pixels_byte :: proc (pixels: []byte) {stbi.image_free(raw_data(pixels))}
 free_pixels_u16  :: proc (pixels: []u16)  {stbi.image_free(raw_data(pixels))}
 free_pixels :: proc {free_pixels_byte, free_pixels_u16}
