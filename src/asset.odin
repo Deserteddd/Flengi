@@ -1,10 +1,7 @@
 package obj_viewer
 
 
-import fp "core:path/filepath"
 import "core:os"
-import "core:path/filepath"
-import "core:fmt"
 import "core:log"
 import "core:slice"
 
@@ -72,6 +69,7 @@ TextureInfo :: struct {
 
 AssetData :: struct {
     header:     AssetHeader,
+    file:       []byte,
     vertices:   []Vertex,
     indices:    []u32,
     primitives: []Primitive,
@@ -80,12 +78,13 @@ AssetData :: struct {
     images:     [][]byte
 }
 
-load_asset_data :: proc(path: string) -> AssetData {
+load_asset_data :: proc(path: string, allocator := context.allocator) -> AssetData {
     data: AssetData
-    bin_asset, read_err := os.read_entire_file(path, context.allocator)
+    bin_asset, read_err := os.read_entire_file(path, allocator)
     if read_err != nil {
         log.error("Failed to read asset binary:", path)
     }
+    data.file = bin_asset
     header_ptr := cast(^AssetHeader)&bin_asset[0]
     data.header = header_ptr^
 
@@ -106,14 +105,15 @@ load_asset_data :: proc(path: string) -> AssetData {
 
     images: [dynamic][]u8
     for tex_info in data.textures {
-        img_ptr := cast(^byte)&bin_asset[tex_info.offset]
+        img_ptr := &bin_asset[tex_info.offset]
         pixels := slice.from_ptr(img_ptr, int(tex_info.size))
         append(&images, pixels)
     }
-
     data.images = images[:]
+
     return data
 }
+
 
 
 

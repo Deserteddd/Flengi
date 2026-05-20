@@ -2,8 +2,6 @@ package obj_viewer
 import "core:math"
 import "core:math/linalg"
 import "core:math/rand"
-import "core:log"
-import "base:runtime"
 import "core:time"
 import rd "../Redef/src"
 

@@ -1,7 +1,6 @@
 package obj_viewer
 
 import "core:math/linalg"
-import "core:math"
 
 AABB :: struct {
     min: vec3,

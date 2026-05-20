@@ -14,14 +14,16 @@ Player :: struct {
     checkpoint: [2]vec3,                // Position, Rotation
 }
 
-create_player :: proc(pos: vec3 = 0) {
+create_player :: proc(pos: vec3 = 0, rotation: vec3 = 0) {
     g.player = {
         position = pos,
+        rotation = rotation,
         bbox = AABB {
             min = pos + {-0.3, 0, -0.3},
             max = pos + {0.3, 2.0, 0.3}
         },
-        noclip = true
+        checkpoint = {pos, rotation},
+        noclip = true,
     }
 }
 
@@ -63,9 +65,9 @@ update_player :: proc(scene: Scene) {
 
     found_collision: bool
     
-    win_size := rd.get_window_size()
-    ray_origin, ray_dir := ray_from_screen(g.camera, win_size/2, win_size)
-    closest_hit: f32 = math.F32_MAX
+    // win_size := rd.get_window_size()
+    // ray_origin, ray_dir := ray_from_screen(g.camera, win_size/2, win_size)
+    // closest_hit: f32 = math.F32_MAX
     closest_entity: EntityID = -1
 
     // for &entity in scene.entities {
@@ -109,7 +111,7 @@ update_player :: proc(scene: Scene) {
     }
 
     if g.lmb_click {
-        for &e, i in scene.entities {
+        for &e in scene.entities {
             if e.id == closest_entity {
                 g.selected = e.id
                 break

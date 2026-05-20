@@ -1,9 +1,8 @@
 package obj_viewer
 
 
-import lg "core:math/linalg"
 import "core:log"
-import "base:runtime"
+import lg "core:math/linalg"
 import rd "../Redef/src"
 
 PointLight :: struct {
@@ -111,7 +110,6 @@ create_frag_ubo :: #force_inline proc() -> FragUBOGlobal {
 draw_entities :: proc(scene: ^Scene) {
     proj_matrix := create_proj_matrix(g.camera)
     view_matrix := create_view_matrix(g.camera)
-
     vp := proj_matrix * view_matrix
     rd.set_blend_mode(.Opaque)
     rd.bind(&g.renderer.vs_gfx)
@@ -125,6 +123,14 @@ draw_entities :: proc(scene: ^Scene) {
         rd.bind(&ro.materials, 1)
         rd.bind(&ro.vbo)
         rd.bind(&ro.ibo)
+        
+        // single_material: bool
+        // if len(ro.primitives) == 1 {
+        //     single_material = true
+        //     material_id: u32 = 0
+        //     rd.push_constant_data(.Pixel, &material_id, 1)
+        // }
+
         for entity in scene.entities {
             if entity.renderable != &ro do continue
             model_matrix := lg.matrix4_from_trs(
@@ -157,7 +163,6 @@ toggle_fullscreen :: proc() {
 }
 
 get_furustum_planes :: proc() -> [6]vec4 {
-    camera := g.camera
     proj_matrix := create_proj_matrix(g.camera)
     view_matrix := create_view_matrix(g.camera)
     vp := proj_matrix * view_matrix
@@ -261,13 +266,4 @@ draw_sprite :: proc(sprite: Sprite, pos: vec2 = 0, scale: f32 = 1) {
     rd.bind(&r.crosshair.texture)
     rd.push_constant_data(.Vertex, &ubo, 0)
     rd.draw_indexed(0, 6)
-}
-
-draw_rect :: proc(rect: Rect, color: vec4 = 0.2) {
-    ubo := UBO2D {
-        rect = rect,
-        win_size = rd.get_window_size(),
-        color = color
-    }
-    panic("TODO")
 }

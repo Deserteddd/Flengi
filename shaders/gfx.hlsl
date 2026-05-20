@@ -60,8 +60,6 @@ StructuredBuffer<Material> materials : register(t1);
 
 cbuffer FragUBO : register(b0) {
     float3 light_pos;
-    // float _pad;
-
     float3 light_color;
     float  light_intensity;
     float3 camera_pos;
@@ -71,7 +69,7 @@ cbuffer MaterialID : register(b1) {
     uint material_id;
 }
 
-static const float PI = 3.14159265;
+#define PI 3.14159265
 
 float3 srgb_to_linear(float3 c) {
     return pow(saturate(c), 2.2);

@@ -1,6 +1,5 @@
 package obj_viewer
 
-import "base:runtime"
 import "core:log"
 import "core:time"
 import rand "core:math/rand"
@@ -27,9 +26,9 @@ init :: proc(scene: ^Scene) {
             }
         }
     }
-    create_player()
-    // for i in 0..<500 {
-    //     mappi, mappi_ok := entity_from_asset(scene, "mappi"); assert(mappi_ok)
+    create_player(g.player.position, g.player.rotation)
+    // for _ in 0..<5000 {
+    //     mappi, mappi_ok := entity_from_asset(scene, "helmet"); assert(mappi_ok)
         
     //     set_entity_transform(scene, mappi, {
     //         rand.float32_normal(0, 100),
@@ -38,6 +37,9 @@ init :: proc(scene: ^Scene) {
     //     }, 1)
 
     // }
+    for asset in scene.assets {
+        delete(asset.data.file)
+    }
     g.camera.fov = 90
 }
 
@@ -47,18 +49,19 @@ create_render_object :: proc(asset: ^Asset) -> Renderable {
     ro: Renderable
     ro.vbo = rd.create_vertex_buffer(asset.data.vertices)
     ro.ibo = rd.create_index_buffer(asset.data.indices)
-    ro.primitives = asset.data.primitives
     ro.materials = rd.create_structured_buffer(asset.data.materials, {.Pixel})
-
-    pixels: [dynamic][]byte
-    width, height: u32
-    for tex_info, i in asset.data.textures {
-        img := asset.data.images[i]
-        width = tex_info.width
-        height = tex_info.height
-        append(&pixels, img)
+    
+    primitives: [dynamic]Primitive
+    for p in asset.data.primitives {
+        append(&primitives, p)
     }
-    ro.textures = rd.create_texture_buffer(pixels[:], width, height)
+    ro.primitives = primitives[:]
+
+    if len(asset.data.textures) > 0 {
+        width := asset.data.textures[0].width
+        height := asset.data.textures[0].height
+        ro.textures = rd.create_texture_buffer(asset.data.images, width, height)
+    }
     
     return ro
 }
@@ -70,8 +73,8 @@ run :: proc(scene: ^Scene) {
             free_all(context.temp_allocator)
             g.frame += 1
             g.lmb_click = false
-            // if g.frame % 10 == 0 {
-            //     log.debug(time.duration_milliseconds(time.since(now))/10)
+            // if g.frame % 20 == 0 {
+            //     log.debug(time.duration_milliseconds(time.since(now))/20)
             //     now = time.now()
             // }
         }
@@ -115,14 +118,14 @@ update :: proc(scene: ^Scene, keys: KeyboardEvents) -> (exit: bool) {
             case .C:
                 if .CONTROL in mod do return true
             case .Q:
-                if !g.player.airborne do g.player.checkpoint = get_player_translation()
+                if !g.player.airborne || g.player.noclip do g.player.checkpoint = get_player_translation()
             case .E:
                 reset_player_pos()
                 g.player.noclip = false
             case .N: g.player.noclip = !g.player.noclip
                 log.debug(g.player.noclip)
-            // case .S: 
-            //     if .CONTROL in mod do write_save_file(scene^)
+            case .S: 
+                if .CONTROL in mod && !g.running do write_save_file(scene^)
             case .NUM1: spawn(scene, 0, false)
             case .NUM2: spawn(scene, 1, false)
             case .NUM3: spawn(scene, 2, false)

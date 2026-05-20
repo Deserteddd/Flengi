@@ -2,6 +2,7 @@ package obj_viewer
 
 import "core:fmt"
 import "core:slice"
+import lg "core:math/linalg"
 import rd "../Redef/src"
 
 EntityID :: distinct i32
@@ -41,6 +42,7 @@ entity_from_asset :: proc(scene: ^Scene, asset_name: string, entity_name: string
     for &asset, i in scene.assets {
         if asset.name == asset_name {
             entity.renderable = &scene.renderables[i]
+            entity.asset = &asset
             break
         }
     }
@@ -55,11 +57,18 @@ entity_from_asset :: proc(scene: ^Scene, asset_name: string, entity_name: string
     return
 }
 
-set_entity_transform :: proc(scene: ^Scene, id: EntityID, pos: vec3, scale: vec3 = 1) {
+set_entity_transform :: proc(
+    scene: ^Scene, 
+    id: EntityID, 
+    pos: vec3, 
+    scale: vec3 = 1,
+    rotation: quaternion128 = {}
+) {
     for &e in scene.entities {
         if e.id == id {
             e.physics.position = pos
             e.physics.scale    = scale
+            e.physics.rotation = rotation
             break
         }
     }
@@ -79,7 +88,7 @@ set_entity_transform :: proc(scene: ^Scene, id: EntityID, pos: vec3, scale: vec3
 @(private = "file")
 lowest_free_id :: proc(ids: []EntityID) -> EntityID {
     len := len(ids)
-    for &val, i in ids {
+    for &val in ids {
         for {
             // val := ids[i];
             if val <= 0 || int(val) > len {
