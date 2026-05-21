@@ -150,7 +150,6 @@ draw_entities :: proc(scene: ^Scene) {
     vp := proj_matrix * view_matrix
     rd.push_constant_data(.Vertex, &vp, 0)
 
-    frustum := get_furustum_planes(vp)
 
     frag_ubo := create_frag_ubo()
     rd.push_constant_data(.Pixel, &frag_ubo, 0)
@@ -165,8 +164,7 @@ draw_entities :: proc(scene: ^Scene) {
         rd.bind(&ro.ibo)
 
         for entity in scene.entities {
-            if entity.renderable != &ro do continue
-            if !aabb_intersects_frustum(frustum, get_entity_aabb(entity)) do continue
+            if entity.renderable != &ro || !entity.in_frustum do continue
 
             model_matrix := lg.matrix4_from_trs(
                 entity.physics.position,
@@ -189,8 +187,7 @@ draw_entities :: proc(scene: ^Scene) {
         rd.bind(&g.renderer.ps_aabb)
 
         for entity in scene.entities {
-            if entity.renderable != &ro do continue
-            if !aabb_intersects_frustum(frustum, get_entity_aabb(entity)) do continue
+            if entity.renderable != &ro || !entity.in_frustum do continue
             model_matrix := lg.matrix4_from_trs(
                 entity.physics.position,
                 entity.physics.rotation,

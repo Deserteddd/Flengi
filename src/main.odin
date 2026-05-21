@@ -14,7 +14,7 @@ main :: proc() {
 }
 
 init :: proc(scene: ^Scene) {
-    ok := rd.create_window("Demo window", 1280, 720, ODIN_DEBUG); assert(ok)
+    ok := rd.create_window("Demo window", 1280, 720, false); assert(ok)
     rd.set_relative_mouse_mode()
     RND_Init()
     scene.renderables = make([]Renderable, len(scene.assets)) 
@@ -31,6 +31,7 @@ init :: proc(scene: ^Scene) {
     for asset in scene.assets {
         delete(asset.data.file)
     }
+
 
     now := time.now()
     for _ in 0..<50000 {
@@ -94,6 +95,7 @@ run :: proc(scene: ^Scene) {
                         case .S: 
                             if .CONTROL in mod && !g.running do write_save_file(scene^)
                         case .NUM1: spawn(scene, "mappi", false)
+                        case .NUM2: spawn(scene, "spheres", false)
                     }
                 case rd.MouseEvent: 
                 #partial switch ev.type {

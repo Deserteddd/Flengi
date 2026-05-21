@@ -13,7 +13,8 @@ Entity :: struct {
     name:       string,
     asset:      ^Asset,
     renderable: ^Renderable,
-    physics:    Physics
+    physics:    Physics,
+    in_frustum: bool
 }
 
 spawn :: proc(scene: ^Scene, asset: string, under_player: bool) -> (index: int) {
@@ -21,7 +22,7 @@ spawn :: proc(scene: ^Scene, asset: string, under_player: bool) -> (index: int) 
     if index == -1 do return
     entity := &scene.entities[index]
     if under_player {
-        entity.physics.position = get_player_translation().x - {0, entity.physics.aabb.max.y, 0}+0.01
+        entity.physics.position = get_player_translation().x - {0, entity.physics.aabb.max.y, 0}+0.1
     } else {
         screen_size := rd.get_window_size()
         origin, dir := ray_from_screen(g.camera, screen_size/2, screen_size)

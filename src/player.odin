@@ -49,7 +49,7 @@ update_player :: proc(scene: Scene) {
     airborne_at_start := p.airborne
     if p.noclip {
         p.speed = 0
-        delta_pos := wishveloc * f32(dt) * 10
+        delta_pos := wishveloc * f32(dt) * 16
         p.position += delta_pos
         p.bbox.min += delta_pos
         p.bbox.max += delta_pos
@@ -77,9 +77,13 @@ update_player :: proc(scene: Scene) {
     closest_hit: f32 = math.F32_MAX
     closest_entity: EntityID = 0
 
+    proj_matrix := create_proj_matrix(g.camera)
+    view_matrix := create_view_matrix(g.camera)
+    vp := proj_matrix * view_matrix
+    frustum := get_furustum_planes(vp)
     for &entity in scene.entities {
         aabb := get_entity_aabb(entity)
-
+        entity.in_frustum = aabb_intersects_frustum(frustum,  aabb)
         if aabbs_collide(p.bbox, aabb) && !p.noclip {
             found_collision = true
             mtv := resolve_aabb_collision_mtv(p.bbox, aabb)
@@ -114,15 +118,6 @@ update_player :: proc(scene: Scene) {
         }
 
         if lg.length(p.speed.xz) > 20 do p.speed.xz *= 0.9
-    }
-
-    if g.lmb_click {
-        for &e in scene.entities {
-            if e.id == closest_entity {
-                g.selected = e.id
-                break
-            }
-        }
     }
 }
 

@@ -25,13 +25,13 @@ vector_normalize :: proc(v: ^vec3) -> f32 {
     return length
 }
 
-aabb_intersects_frustum :: #force_inline proc(frustum_planes: [6]vec4, aabb: AABB) -> bool {
+aabb_intersects_frustum :: proc(frustum_planes: [6]vec4, aabb: AABB) -> bool {
     p_vertex: vec3
     for p in frustum_planes {
         p_vertex = {
-            f32(cast(byte)bool(p.x >= 0))*(aabb.max.x)+f32(cast(byte)bool(p.x<0))*aabb.min.x,
-            f32(cast(byte)bool(p.y >= 0))*(aabb.max.y)+f32(cast(byte)bool(p.y<0))*aabb.min.y,
-            f32(cast(byte)bool(p.z >= 0))*(aabb.max.z)+f32(cast(byte)bool(p.z<0))*aabb.min.z,
+            p.x >= 0 ? aabb.max.x : aabb.min.x,
+            p.y >= 0 ? aabb.max.y : aabb.min.y,
+            p.z >= 0 ? aabb.max.z : aabb.min.z,
         }
 
         if linalg.dot(p.xyz, p_vertex) + p.w < 0 {
