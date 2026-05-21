@@ -37,6 +37,7 @@ PhysicsSerialized :: struct {
     scale,
     rotation,
     speed: vec3,
+    aabb:  AABB
 }
 
 write_save_file :: proc(scene: Scene, loc := #caller_location) {
@@ -61,7 +62,8 @@ write_save_file :: proc(scene: Scene, loc := #caller_location) {
                 position = e.physics.position,
                 scale    = e.physics.scale,
                 speed    = e.physics.speed,
-                rotation = {rx, ry, rz}
+                rotation = {rx, ry, rz},
+                aabb     = e.physics.aabb
             },
         }
     }
@@ -82,11 +84,14 @@ write_save_file :: proc(scene: Scene, loc := #caller_location) {
 }
 
 load_save_file :: proc(path: string) -> SaveFile {
+    result: SaveFile
     json_filename := strings.concatenate({path, ".json"}, context.temp_allocator)
     json_data, err := os.read_entire_file_from_path(json_filename, context.temp_allocator)
-    assert(err == nil)
+    if err != nil {
+        log.errorf("Failed to load save file: %v - %v", path, err)
+        return result
+    }
 
-    result: SaveFile
     json_err := json.unmarshal(json_data, &result)
     if json_err != nil {
         log.errorf("Failed to read savefile: %v", json_err)
@@ -110,7 +115,8 @@ load_scene :: proc(path: string) -> Scene {
                 serialized.physics.rotation.y,
                 serialized.physics.rotation.z,
                 .XYZ
-            )
+            ),
+            aabb    = serialized.physics.aabb
         }
         for &asset in assets {
             if asset.name == serialized.asset {

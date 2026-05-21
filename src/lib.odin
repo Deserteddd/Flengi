@@ -29,18 +29,21 @@ g := struct {
     camera:      Camera,
     renderer:    Renderer,
     selected:    EntityID,
-    lmb_click:   bool,
     frame:       uint,
     mouse_sense,
     dt,
     fov:         f32,
+    lmb_click,
+    rmb_click,
+    vsync,
     fullscreen,
     running: bool
 
 } {
     fov = 90,
-    mouse_sense = 16,
-    running = true
+    mouse_sense = 0.04,
+    running = true,
+    vsync   = true
 }
 
 
@@ -54,10 +57,6 @@ TRANSFORM_IDENTITY :: Transform {
     scale = 1,
     rotation = 0
 }
-
-KeyEvent :: rd.KeyboardEvent
-
-KeyboardEvents :: [dynamic; 64]KeyEvent
 
 DebugInfo :: struct {
     frame_time:         time.Duration,
@@ -83,4 +82,48 @@ norm :: proc(v: vec3) -> f32 { return math.sqrt_f32(v.x*v.x + v.y*v.y + v.z*v.z)
 
 random_range :: proc(min: f32, max: f32) -> f32 {
     return rand.float32() * (max - min) + min
+}
+
+aabb_vertices :: proc(bbox: AABB) -> [24]vec3 {
+    min := bbox.min
+    max := bbox.max
+
+    return {
+        vec3{min.x, min.y, min.z},
+        vec3{max.x, min.y, min.z},
+
+        vec3{max.x, max.y, min.z},
+        vec3{min.x, max.y, min.z},
+
+        vec3{min.x, min.y, min.z},
+        vec3{min.x, min.y, max.z},
+
+        vec3{max.x, min.y, max.z},
+        vec3{min.x, min.y, max.z},
+
+        vec3{max.x, max.y, max.z},
+        vec3{min.x, max.y, max.z},
+
+        vec3{max.x, min.y, max.z},
+        vec3{max.x, min.y, min.z},
+
+        vec3{max.x, max.y, min.z},
+        vec3{max.x, max.y, max.z},
+
+        vec3{min.x, max.y, min.z},
+        vec3{min.x, max.y, max.z},
+        
+        // Vertical bars
+        vec3{min.x, min.y, min.z},
+        vec3{min.x, max.y, min.z},
+
+        vec3{max.x, min.y, min.z},
+        vec3{max.x, max.y, min.z},
+
+        vec3{min.x, min.y, max.z},
+        vec3{min.x, max.y, max.z},
+
+        vec3{max.x, min.y, max.z},
+        vec3{max.x, max.y, max.z},
+    }
 }

@@ -26,7 +26,11 @@ spawn :: proc(scene: ^Scene, index: i32, under_player: bool) -> (id: EntityID, o
     if i32(len(scene.assets)) > index {
         id = entity_from_asset(scene, scene.assets[index].name) or_return
         if under_player {
-            set_entity_transform(scene, id, get_player_translation().x)
+            for &e in scene.entities {
+                if e.id == id {
+                    e.physics.position = get_player_translation().x - {0, e.physics.aabb.max.y, 0}+0.01
+                }
+            }
         } else {
             screen_size := rd.get_window_size()
             origin, dir := ray_from_screen(g.camera, screen_size/2, screen_size)
@@ -35,6 +39,16 @@ spawn :: proc(scene: ^Scene, index: i32, under_player: bool) -> (id: EntityID, o
         ok = true
     }
     return
+}
+
+remove_entity :: proc(scene: ^Scene, id: EntityID) -> bool {
+    if id == -1 do return false
+    for e, i in scene.entities {
+        if e.id == id {
+            ordered_remove_soa(&scene.entities, i)
+        }
+    }
+    return true
 }
 
 entity_from_asset :: proc(scene: ^Scene, asset_name: string, entity_name: string = "") -> (id: EntityID, ok: bool) {
@@ -52,6 +66,7 @@ entity_from_asset :: proc(scene: ^Scene, asset_name: string, entity_name: string
     else do entity.name = entity_name
     entity.id = id
     entity.physics.scale = 1
+    entity.physics.aabb  = entity.asset.data.header.aabb
     append_soa(&scene.entities, entity)
     ok = true
     return

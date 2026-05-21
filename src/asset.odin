@@ -18,6 +18,8 @@ AssetHeader :: struct {
     material_count:     u32,
     texture_count:      u32,
 
+    aabb:               AABB,
+
     vertex_stride:      u32,
     index_stride:       u32,
 
@@ -87,7 +89,6 @@ load_asset_data :: proc(path: string, allocator := context.allocator) -> AssetDa
     data.file = bin_asset
     header_ptr := cast(^AssetHeader)&bin_asset[0]
     data.header = header_ptr^
-
     vert_ptr := cast(^Vertex)&bin_asset[data.header.vertices_offset]
     data.vertices = slice.from_ptr(vert_ptr, int(data.header.vertex_count))
 

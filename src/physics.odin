@@ -12,19 +12,9 @@ Physics :: struct {
     position,
     scale,
     speed: vec3,
-    rotation: quaternion128
+    rotation: quaternion128,
+    aabb: AABB
 }
-
-// entity_aabbs :: proc(entity: Entity) -> []AABB {
-//     aabbs := make([]AABB, len(entity.asset.aabbs), context.temp_allocator)
-//     for aabb, i in entity.asset.aabbs {
-//         aabbs[i] = AABB {
-//             min = aabb.min * entity.transform.scale + entity.transform.translation,
-//             max = aabb.max * entity.transform.scale + entity.transform.translation
-//         }
-//     }
-//     return aabbs
-// }
 
 vector_normalize :: proc(v: ^vec3) -> f32 {
     length := linalg.length(v^)

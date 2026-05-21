@@ -25,6 +25,10 @@ SkyboxUBO :: struct {
     inv_proj: matrix[4,4]f32
 }
 
+VertexAABB :: struct {
+    position: vec3,
+}
+
 Frame :: struct {
     frustum_planes:     [6]vec4,
 }
@@ -41,6 +45,7 @@ Renderable :: struct {
     ibo:            rd.IndexBuffer,
     materials:      rd.StructuredBuffer,
     textures:       rd.TextureBuffer,
+    aabb:           rd.VertexBuffer,
     primitives:     []Primitive,
 }
 
@@ -54,6 +59,9 @@ Renderer :: struct {
     vs_skybox:          rd.VertexShader,
     ps_skybox:          rd.PixelShader,
 
+    vs_aabb:            rd.VertexShader,
+    ps_aabb:            rd.PixelShader,
+
     fallback_texture:   rd.Texture,
     skybox_texture:     rd.TextureCube,
     p_light:            PointLight,
@@ -64,6 +72,7 @@ Renderer :: struct {
 shader_ui       :: #load("../shaders/ui.hlsl")
 shader_gfx      :: #load("../shaders/gfx.hlsl")
 shader_skybox   :: #load("../shaders/skybox.hlsl")
+shader_aabb     :: #load("../shaders/aabb.hlsl")
 
 RND_Init :: proc() {
     r := &g.renderer
@@ -81,6 +90,9 @@ RND_Init :: proc() {
     r.vs_skybox, ok = rd.load_vertex_shader(shader_skybox, "vs_main", None); assert(ok)
     r.ps_skybox, ok = rd.load_pixel_shader(shader_skybox, "ps_main"); assert(ok)
 
+    r.vs_aabb, ok = rd.load_vertex_shader(shader_aabb, "vs_main", VertexAABB); assert(ok)
+    r.ps_aabb, ok = rd.load_pixel_shader(shader_aabb, "ps_main"); assert(ok)
+
     r.skybox_texture = load_cubemap_texture({
         .PX = "assets/images/skybox/px.png",
         .NX = "assets/images/skybox/nx.png",
@@ -92,10 +104,35 @@ RND_Init :: proc() {
 
     r.p_light = {
         position = 0,
-        power = 100,
+        power = 1000,
         color = 1
     }
 
+}
+
+create_render_object :: proc(asset: ^Asset) -> Renderable {
+    assert(asset != nil)
+    ro: Renderable
+    ro.vbo = rd.create_vertex_buffer(asset.data.vertices)
+    ro.ibo = rd.create_index_buffer(asset.data.indices)
+    ro.materials = rd.create_structured_buffer(asset.data.materials, {.Pixel})
+    
+    primitives: [dynamic]Primitive
+    for p in asset.data.primitives {
+        append(&primitives, p)
+    }
+    ro.primitives = primitives[:]
+
+    if len(asset.data.textures) > 0 {
+        width := asset.data.textures[0].width
+        height := asset.data.textures[0].height
+        ro.textures = rd.create_texture_buffer(asset.data.images, width, height)
+    }
+
+    aabb_verts := aabb_vertices(asset.data.header.aabb)
+    ro.aabb = rd.create_vertex_buffer(aabb_verts[:])
+    
+    return ro
 }
 
 create_frag_ubo :: #force_inline proc() -> FragUBOGlobal {
@@ -111,25 +148,20 @@ draw_entities :: proc(scene: ^Scene) {
     proj_matrix := create_proj_matrix(g.camera)
     view_matrix := create_view_matrix(g.camera)
     vp := proj_matrix * view_matrix
-    rd.set_blend_mode(.Opaque)
-    rd.bind(&g.renderer.vs_gfx)
-    rd.bind(&g.renderer.ps_gfx)
     rd.push_constant_data(.Vertex, &vp, 0)
 
     frag_ubo := create_frag_ubo()
     rd.push_constant_data(.Pixel, &frag_ubo, 0)
+
+    rd.set_blend_mode(.Opaque)
+
     for &ro in scene.renderables {
+        rd.bind(&g.renderer.vs_gfx)
+        rd.bind(&g.renderer.ps_gfx)
         rd.bind(&ro.textures, 0)
         rd.bind(&ro.materials, 1)
         rd.bind(&ro.vbo)
         rd.bind(&ro.ibo)
-        
-        // single_material: bool
-        // if len(ro.primitives) == 1 {
-        //     single_material = true
-        //     material_id: u32 = 0
-        //     rd.push_constant_data(.Pixel, &material_id, 1)
-        // }
 
         for entity in scene.entities {
             if entity.renderable != &ro do continue
@@ -144,23 +176,37 @@ draw_entities :: proc(scene: ^Scene) {
                 rd.draw_indexed(primitive.index_start, primitive.index_count)
             }
         }
+
+        rd.set_primitive_topology(.lineList)
+        defer rd.set_primitive_topology(.triangleList)
+
+        rd.bind(&ro.aabb)
+        rd.bind(&g.renderer.vs_aabb)
+        rd.bind(&g.renderer.ps_aabb)
+
+        for entity in scene.entities {
+            if entity.renderable != &ro do continue
+            model_matrix := lg.matrix4_from_trs(
+                entity.physics.position,
+                entity.physics.rotation,
+                entity.physics.scale
+            )
+            rd.push_constant_data(.Vertex, &model_matrix, 1)
+            rd.draw(24)
+        }
     }
 
     inv_view_mat := lg.inverse(view_matrix)
     inv_proj_mat := lg.inverse(proj_matrix)
+    rd.push_constant_data(.Vertex, &SkyboxUBO{inv_view_mat, inv_proj_mat}, 0)
 
     rd.set_blend_mode(.Skybox)
     rd.bind(&g.renderer.vs_skybox)
     rd.bind(&g.renderer.ps_skybox)
     rd.bind(&g.renderer.skybox_texture)
-    rd.push_constant_data(.Vertex, &SkyboxUBO{inv_view_mat, inv_proj_mat}, 0)
     rd.draw(3)
 }
 
-
-toggle_fullscreen :: proc() {
-    panic("TODO")
-}
 
 get_furustum_planes :: proc() -> [6]vec4 {
     proj_matrix := create_proj_matrix(g.camera)
