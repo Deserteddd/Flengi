@@ -150,11 +150,12 @@ draw_entities :: proc(scene: ^Scene) {
     vp := proj_matrix * view_matrix
     rd.push_constant_data(.Vertex, &vp, 0)
 
+    frustum := get_furustum_planes(vp)
+
     frag_ubo := create_frag_ubo()
     rd.push_constant_data(.Pixel, &frag_ubo, 0)
 
     rd.set_blend_mode(.Opaque)
-
     for &ro in scene.renderables {
         rd.bind(&g.renderer.vs_gfx)
         rd.bind(&g.renderer.ps_gfx)
@@ -165,6 +166,8 @@ draw_entities :: proc(scene: ^Scene) {
 
         for entity in scene.entities {
             if entity.renderable != &ro do continue
+            if !aabb_intersects_frustum(frustum, get_entity_aabb(entity)) do continue
+
             model_matrix := lg.matrix4_from_trs(
                 entity.physics.position,
                 entity.physics.rotation,
@@ -177,6 +180,7 @@ draw_entities :: proc(scene: ^Scene) {
             }
         }
 
+        if !rd.debug_mode() do continue
         rd.set_primitive_topology(.lineList)
         defer rd.set_primitive_topology(.triangleList)
 
@@ -186,6 +190,7 @@ draw_entities :: proc(scene: ^Scene) {
 
         for entity in scene.entities {
             if entity.renderable != &ro do continue
+            if !aabb_intersects_frustum(frustum, get_entity_aabb(entity)) do continue
             model_matrix := lg.matrix4_from_trs(
                 entity.physics.position,
                 entity.physics.rotation,
@@ -208,10 +213,7 @@ draw_entities :: proc(scene: ^Scene) {
 }
 
 
-get_furustum_planes :: proc() -> [6]vec4 {
-    proj_matrix := create_proj_matrix(g.camera)
-    view_matrix := create_view_matrix(g.camera)
-    vp := proj_matrix * view_matrix
+get_furustum_planes :: proc(vp: matrix[4,4]f32) -> [6]vec4 {
     t := lg.transpose(vp)
     return {
         t[3]+t[0],

@@ -13,16 +13,6 @@ mat4 :: matrix[4,4]f32
 None :: struct{}
 
 to_radians :: math.to_radians_f32
-round      :: math.round_f32
-pow        :: linalg.pow
-max        :: math.max
-min        :: math.min
-
-MouseButton :: enum {
-    LEFT,
-    RIGHT,
-    MIDDLE,
-}
 
 g := struct {
     player:      Player,
@@ -46,30 +36,10 @@ g := struct {
     vsync   = true
 }
 
-
-Mode :: enum {
-    PLAY,
-    EDIT,
-}
-
-TRANSFORM_IDENTITY :: Transform {
-    translation = 0,
-    scale = 1,
-    rotation = 0
-}
-
-DebugInfo :: struct {
-    frame_time:         time.Duration,
-    draw_call_count:    u32,
-    player_speed:       f32,
-    fps:                u32,
-}
-
-
 Scene :: struct {
-    assets:           []Asset,
-    renderables:      []Renderable,
-    entities:     #soa[dynamic]Entity,
+    assets:             []Asset,
+    renderables:        []Renderable,
+    entities:       #soa[dynamic]Entity,
 }
 
 in_bounds :: proc(p: vec2, rect: Rect) -> bool {

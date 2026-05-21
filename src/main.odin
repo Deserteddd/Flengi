@@ -31,6 +31,18 @@ init :: proc(scene: ^Scene) {
     for asset in scene.assets {
         delete(asset.data.file)
     }
+
+    now := time.now()
+    for _ in 0..<50000 {
+        pos := vec3{
+            rand.float32_normal(0, 150), 
+            rand.float32_normal(0, 150), 
+            rand.float32_normal(0, 150)
+        }
+        index := spawn(scene, "mappi", false)
+        scene.entities[index].physics.position = pos
+    }
+    log.debug("Entity creation took:", time.since(now))
     g.camera.fov = 90
     rd.set_vsync(g.vsync)
 }
@@ -45,7 +57,8 @@ run :: proc(scene: ^Scene) {
             g.frame += 1
             g.lmb_click = false
             g.rmb_click = false
-            if g.frame % 20 == 0 {
+            if g.frame % 100 == 0 {
+                log.info(1000/(time.duration_milliseconds(time.since(now))/100))
                 now = time.now()
             }
         }
@@ -80,10 +93,7 @@ run :: proc(scene: ^Scene) {
                             log.debug(g.player.noclip)
                         case .S: 
                             if .CONTROL in mod && !g.running do write_save_file(scene^)
-                        case .NUM1: spawn(scene, 0, false)
-                        case .NUM2: spawn(scene, 1, false)
-                        case .NUM3: spawn(scene, 2, false)
-                        case .NUM4: spawn(scene, 3, false)
+                        case .NUM1: spawn(scene, "mappi", false)
                     }
                 case rd.MouseEvent: 
                 #partial switch ev.type {
@@ -108,14 +118,14 @@ update :: proc(scene: ^Scene) -> (exit: bool) {
     }
 
     if g.lmb_click {
-        spawn(scene, 0, true)
+        spawn(scene, "mappi", true)
     }
 
     if g.rmb_click {
         win_size := rd.get_window_size()
         origin, dir := ray_from_screen(g.camera, win_size / 2, win_size)
         closest_hit: f32 = max(f32)
-        closest_entity: EntityID = -1
+        closest_entity: EntityID = 0
         for entity in scene.entities {
             intersection := ray_intersect_aabb(origin, dir, get_entity_aabb(entity))
             if intersection != -1 && intersection < closest_hit {

@@ -34,7 +34,7 @@ get_player_translation :: proc() -> [2]vec3 {
     }
 }
 
-get_entity_aabb :: proc(entity: Entity) -> AABB {
+get_entity_aabb :: #force_inline proc(entity: Entity) -> AABB {
     return AABB {
         min = entity.physics.aabb.min * entity.physics.scale + entity.physics.position,
         max = entity.physics.aabb.max * entity.physics.scale + entity.physics.position
@@ -75,7 +75,7 @@ update_player :: proc(scene: Scene) {
     win_size := rd.get_window_size()
     ray_origin, ray_dir := ray_from_screen(g.camera, win_size/2, win_size)
     closest_hit: f32 = math.F32_MAX
-    closest_entity: EntityID = -1
+    closest_entity: EntityID = 0
 
     for &entity in scene.entities {
         aabb := get_entity_aabb(entity)
