@@ -35,19 +35,11 @@ Frame :: struct {
 
 Camera :: struct {
     position:   vec3,
-    pitch:      f32,  
+    pitch:      f32,
     yaw:        f32,
     fov:        f32
 }
 
-Renderable :: struct {
-    vbo:            rd.VertexBuffer,
-    ibo:            rd.IndexBuffer,
-    materials:      rd.StructuredBuffer,
-    textures:       rd.TextureBuffer,
-    aabb:           rd.VertexBuffer,
-    primitives:     []Primitive,
-}
 
 Renderer :: struct {
     vs_ui:              rd.VertexShader,
@@ -86,7 +78,7 @@ RND_Init :: proc() {
 
     r.vs_gfx, ok = rd.load_vertex_shader(shader_gfx, "vs_main", Vertex); assert(ok)
     r.ps_gfx, ok = rd.load_pixel_shader(shader_gfx, "ps_main"); assert(ok)
-    
+
     r.vs_skybox, ok = rd.load_vertex_shader(shader_skybox, "vs_main", None); assert(ok)
     r.ps_skybox, ok = rd.load_pixel_shader(shader_skybox, "ps_main"); assert(ok)
 
@@ -104,7 +96,7 @@ RND_Init :: proc() {
 
     r.p_light = {
         position = 0,
-        power = 1000,
+        power = 100,
         color = 1
     }
 
@@ -116,7 +108,7 @@ create_render_object :: proc(asset: ^Asset) -> Renderable {
     ro.vbo = rd.create_vertex_buffer(asset.data.vertices)
     ro.ibo = rd.create_index_buffer(asset.data.indices)
     ro.materials = rd.create_structured_buffer(asset.data.materials, {.Pixel})
-    
+
     primitives: [dynamic]Primitive
     for p in asset.data.primitives {
         append(&primitives, p)
@@ -131,7 +123,7 @@ create_render_object :: proc(asset: ^Asset) -> Renderable {
 
     aabb_verts := aabb_vertices(asset.data.header.aabb)
     ro.aabb = rd.create_vertex_buffer(aabb_verts[:])
-    
+
     return ro
 }
 
@@ -234,9 +226,9 @@ create_proj_matrix :: proc(camera: Camera, loc := #caller_location) -> mat4 {
     win_size := rd.get_window_size()
     aspect := win_size.x / win_size.y
     return lg.matrix4_perspective_f32(
-        to_radians(camera.fov), 
-        aspect, 
-        0.01, 
+        to_radians(camera.fov),
+        aspect,
+        0.01,
         1000
     )
 }
@@ -302,7 +294,7 @@ draw_sprite :: proc(sprite: Sprite, pos: vec2 = 0, scale: f32 = 1) {
         win_size = rd.get_window_size(),
         use_tex = true,
     }
-    
+
     r := &g.renderer
     rd.bind(&r.vs_ui)
     rd.bind(&r.ps_ui)

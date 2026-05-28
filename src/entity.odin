@@ -3,7 +3,6 @@ package obj_viewer
 import "core:fmt"
 import "core:slice"
 import rand "core:math/rand"
-import lg "core:math/linalg"
 import rd "../Redef/src"
 
 EntityID :: distinct u32
@@ -11,18 +10,43 @@ EntityID :: distinct u32
 Entity :: struct {
     id:         EntityID,
     name:       string,
-    asset:      ^Asset,
+    asset_name: string,
     renderable: ^Renderable,
     physics:    Physics,
     in_frustum: bool
 }
 
-spawn :: proc(scene: ^Scene, asset: string, under_player: bool) -> (index: int) {
+Renderable :: struct {
+    vbo:            rd.VertexBuffer,
+    ibo:            rd.IndexBuffer,
+    materials:      rd.StructuredBuffer,
+    textures:       rd.TextureBuffer,
+    aabb:           rd.VertexBuffer,
+    primitives:     []Primitive,
+}
+
+AABB :: struct {
+    min: vec3,
+    max: vec3
+}
+
+Physics :: struct {
+    dyn: bool,
+    position,
+    scale,
+    speed: vec3,
+    rotation: quaternion128,
+    aabb: AABB
+}
+
+used_ids: map[EntityID]bool
+
+spawn_entity :: proc(scene: ^Scene, asset: string, under_player: bool) -> (index: int) {
     index = entity_from_asset(scene, asset)
     if index == -1 do return
     entity := &scene.entities[index]
     if under_player {
-        entity.physics.position = get_player_translation().x - {0, entity.physics.aabb.max.y, 0}+0.1
+        entity.physics.position = get_player_translation().x - {0, get_entity_aabb(entity^).max.y, 0}
     } else {
         screen_size := rd.get_window_size()
         origin, dir := ray_from_screen(g.camera, screen_size/2, screen_size)
@@ -56,10 +80,11 @@ entity_index :: proc(scene: ^Scene, id: EntityID) -> int {
 // Returns -1 on failure
 entity_from_asset :: proc(scene: ^Scene, asset_name: string, entity_name: string = "") -> (index: int) {
     entity: Entity
-    for &asset, i in scene.assets {
+    for asset, i in scene.assets {
         if asset.name == asset_name {
             entity.renderable = &scene.renderables[i]
-            entity.asset = &asset
+            entity.physics.aabb = asset.data.header.aabb
+            entity.asset_name = asset.name
             break
         }
     }
@@ -72,7 +97,6 @@ entity_from_asset :: proc(scene: ^Scene, asset_name: string, entity_name: string
 
     entity.id = id
     entity.physics.scale = 1
-    entity.physics.aabb  = entity.asset.data.header.aabb
 
     assert(used_ids[id] == false)
     append_soa(&scene.entities, entity)
@@ -81,7 +105,13 @@ entity_from_asset :: proc(scene: ^Scene, asset_name: string, entity_name: string
     return
 }
 
-used_ids: map[EntityID]bool
+get_entity_aabb :: #force_inline proc(entity: Entity) -> AABB {
+    return AABB {
+        min = entity.physics.aabb.min * entity.physics.scale + entity.physics.position,
+        max = entity.physics.aabb.max * entity.physics.scale + entity.physics.position
+    }
+}
+
 
 @(private = "file")
 lowest_free_id :: proc(scene: ^Scene) -> EntityID {

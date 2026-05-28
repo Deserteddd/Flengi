@@ -34,13 +34,6 @@ get_player_translation :: proc() -> [2]vec3 {
     }
 }
 
-get_entity_aabb :: #force_inline proc(entity: Entity) -> AABB {
-    return AABB {
-        min = entity.physics.aabb.min * entity.physics.scale + entity.physics.position,
-        max = entity.physics.aabb.max * entity.physics.scale + entity.physics.position
-    }
-}
-
 update_player :: proc(scene: Scene) {
     G :: 25
     p := &g.player
@@ -69,70 +62,21 @@ update_player :: proc(scene: Scene) {
         p.bbox.min += delta_pos
         p.bbox.max += delta_pos
     }
-
-    found_collision: bool
-    
-    win_size := rd.get_window_size()
-    ray_origin, ray_dir := ray_from_screen(g.camera, win_size/2, win_size)
-    closest_hit: f32 = math.F32_MAX
-    closest_entity: EntityID = 0
-
-    proj_matrix := create_proj_matrix(g.camera)
-    view_matrix := create_view_matrix(g.camera)
-    vp := proj_matrix * view_matrix
-    frustum := get_furustum_planes(vp)
-    for &entity in scene.entities {
-        aabb := get_entity_aabb(entity)
-        entity.in_frustum = aabb_intersects_frustum(frustum,  aabb)
-        if aabbs_collide(p.bbox, aabb) && !p.noclip {
-            found_collision = true
-            mtv := resolve_aabb_collision_mtv(p.bbox, aabb)
-            for axis, j in mtv do if axis != 0 {
-                p.speed[j] *= 0.9
-                if j == 1 { 
-                    if axis > 0 { // This means we are standing on a block
-                        p.airborne = false
-                    } else {
-                        p.speed.y = -0.1
-                    }
-                }
-            }
-            p.position += mtv
-            p.bbox.min += mtv
-            p.bbox.max += mtv
-        }
-        if g.lmb_click {
-            intersection := ray_intersect_aabb(ray_origin, ray_dir, aabb)
-            if intersection != -1 && intersection < closest_hit {
-                closest_hit = intersection
-                closest_entity = entity.id
-            }
-        }
-
-    }
-    if !p.noclip {
-        if !found_collision do p.airborne = true
-
-        if !airborne_at_start && !p.airborne {
-            p.speed *= 0.8
-        }
-
-        if lg.length(p.speed.xz) > 20 do p.speed.xz *= 0.9
-    }
 }
 
-update_camera :: proc() {
-    camera := &g.camera
-    x, y := rd.get_relative_mouse_movement()
-    x *= g.mouse_sense
-    y *= g.mouse_sense
-    g.player.rotation.y += x
-    g.player.rotation.x = math.min(g.player.rotation.x + y, 90)
-    if g.player.rotation.x < -90 do g.player.rotation.x = -90
-    camera.pitch = g.player.rotation.x
-    camera.yaw = g.player.rotation.y
-    camera.position = g.player.position
-    camera.position.y += 2
+reset_player_pos :: proc(at_origin := false) {
+    if at_origin do g.player.position = 0; 
+    else if g.player.checkpoint.x == 0 {
+        g.player.position = g.player.checkpoint.x
+    } else {
+        g.player.position = g.player.checkpoint.x
+        g.player.rotation = g.player.checkpoint.y
+    }
+    g.player.speed = 0
+    g.player.bbox = AABB {
+        min = g.player.position + {-0.3, 0, -0.3},
+        max = g.player.position + {0.3, 2, 0.3}
+    }
 }
 
 player_wish_speed :: proc() -> vec3 {
