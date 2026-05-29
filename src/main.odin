@@ -14,6 +14,7 @@ g := struct {
     mouse_sense,
     dt,
     fov:         f32,
+    time:		 time.Time,
     lmb_click,
     rmb_click,
     vsync,
@@ -40,7 +41,9 @@ init :: proc() {
     rd.set_relative_mouse_mode()
     RND_Init()
     g.camera.fov = 90
+    g.time = time.now()
     rd.set_vsync(g.vsync)
+
 }
 
 
@@ -78,20 +81,19 @@ run :: proc(scene: ^Scene) {
                                 rd.set_vsync(g.vsync)
                                 log.debugf("Vsync %v", g.vsync ? "on" : "off")
                             }
-                        case .C:
-                            if .CONTROL in mod do break main_loop
-                        case .Q:
-                            if !g.player.airborne || g.player.noclip do g.player.checkpoint = get_player_translation()
                         case .E:
                             reset_player_pos()
                             g.player.noclip = false
+                        case .C: if .CONTROL in mod do break main_loop
+                        case .Q: if !g.player.airborne || g.player.noclip do g.player.checkpoint = get_player_translation()
                         case .N: g.player.noclip = !g.player.noclip
-                            log.debug(g.player.noclip)
-                        case .S:
-                            if .CONTROL in mod && !g.running do write_save_file(scene^)
-                        case .NUM1:
-                            index := spawn_entity(scene, "mappi", false)
-                            scene.entities[index].physics.scale = {1, 0.2, 1}
+                        case .S: if .CONTROL in mod && !g.running do write_save_file(scene^)
+                        case .NUM1: if len(scene.assets) > 0 do spawn_entity(scene, scene.assets[0].name, false)
+                        case .NUM2: if len(scene.assets) > 1 do spawn_entity(scene, scene.assets[1].name, false)
+                        case .NUM3: if len(scene.assets) > 2 do spawn_entity(scene, scene.assets[2].name, false)
+                        case .NUM4: if len(scene.assets) > 3 do spawn_entity(scene, scene.assets[3].name, false)
+                        case .NUM5: if len(scene.assets) > 4 do spawn_entity(scene, scene.assets[4].name, false)
+                        case .NUM6: if len(scene.assets) > 5 do spawn_entity(scene, scene.assets[5].name, false)
                     }
                 case rd.MouseEvent:
                 #partial switch ev.type {
@@ -102,8 +104,8 @@ run :: proc(scene: ^Scene) {
         }
 
         update(scene)
-        rd.clear()
-        draw_entities(scene)
+        rd.clear({135, 206, 250, 255})
+        draw_scene(scene)
         draw_sprite(g.renderer.crosshair)
         rd.frame_end()
     }
@@ -134,8 +136,16 @@ update :: proc(scene: ^Scene) -> (exit: bool) {
     airborne_at_start := p.airborne
 
     for &entity, i in scene.entities {
+        //Rotate
+        if entity.asset_name == "helmet" {
+            entity.physics.rotation *= lg.quaternion_angle_axis_f32(g.dt * 0.5, {0, 1, 0})
+        }
+
+        // Get aabb and check visibility
         aabb := get_entity_aabb(entity)
         entity.in_frustum = aabb_intersects_frustum(frustum,  aabb)
+
+        // Check collisions
         if aabbs_collide(p.bbox, aabb) && !p.noclip {
             found_collision = true
             mtv := resolve_aabb_collision_mtv(p.bbox, aabb)

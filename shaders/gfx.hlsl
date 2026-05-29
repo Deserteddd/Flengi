@@ -1,4 +1,3 @@
-
 #define NO_TEX 4294967295
 
 struct Input {
@@ -52,11 +51,13 @@ struct Material {
     uint   _pad0;
 };
 
+TextureCube<float4> cubeMap : register(t0);
+SamplerState smp : register(s0);
 
-Texture2DArray tex_array : register(t0);
-SamplerState samp : register(s0);
+Texture2DArray tex_array : register(t1);
+SamplerState samp : register(s1);
 
-StructuredBuffer<Material> materials : register(t1);
+StructuredBuffer<Material> materials : register(t2);
 
 cbuffer FragUBO : register(b0) {
     float3 light_pos;
@@ -178,7 +179,12 @@ float4 ps_main(Output input, bool is_front_face : SV_IsFrontFace) : SV_Target {
     }
 
     float3 ambient = 0.05 * albedo * ao;
-    float3 color = ambient + Lo + emissive;
+
+    float3 R = reflect(-V, N);
+    float3 env = srgb_to_linear(cubeMap.Sample(smp, R).rgb);
+    float3 env_spec = env * kS;
+
+    float3 color = ambient + Lo + emissive + env_spec;
 
     color = color / (color + 1.0);
     color = pow(color, 1.0 / 2.2);

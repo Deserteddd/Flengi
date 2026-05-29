@@ -62,7 +62,7 @@ aabb_vertices :: proc(bbox: AABB) -> [24]vec3 {
 
         vec3{min.x, max.y, min.z},
         vec3{min.x, max.y, max.z},
-        
+
         // Vertical bars
         vec3{min.x, min.y, min.z},
         vec3{min.x, max.y, min.z},
@@ -186,4 +186,57 @@ ray_intersect_aabb :: proc(origin: vec3, dir: vec3, box: AABB) -> f32 {
         return tmin // hit distance
     }
     return -1.0 // no hit
+}
+
+Plane :: struct {
+    scale:          vec3,
+    num_indices:    u32,
+    vbo:            rd.VertexBuffer,
+    ibo:            rd.IndexBuffer,
+}
+
+new_plane :: proc(n: u16) -> Plane {
+    scale: f32 = 2
+    n_int := int(n)
+    side := n_int + 1
+    half := f32(n) * 0.5
+    vertices := make([]VertexAABB, side*side, context.temp_allocator)
+    for x in 0..<side {
+        for y in 0..<side {
+            index := side*x + y
+            vertices[index] = VertexAABB {
+                position = {(f32(x) - half) * scale, 0, (f32(y) - half) * scale},
+            }
+        }
+    }
+    indices := make([]u32, n_int*n_int*6, context.temp_allocator)
+    idx := 0
+
+    for x in 0..<n_int {
+        for y in 0..<n_int {
+            v0 := u32(side*x     + y)
+            v1 := u32(side*(x+1) + y)
+            v2 := u32(side*(x+1) + (y+1))
+            v3 := u32(side*x     + (y+1))
+
+            // Triangle 1
+            indices[idx] = v0; idx += 1
+            indices[idx] = v2; idx += 1
+            indices[idx] = v1; idx += 1
+
+            // Triangle 2
+            indices[idx] = v0; idx += 1
+            indices[idx] = v3; idx += 1
+            indices[idx] = v2; idx += 1
+        }
+    }
+
+    vbo := rd.create_vertex_buffer(vertices)
+    ibo := rd.create_index_buffer(indices)
+    return {
+        num_indices = u32(len(indices)),
+        scale = {scale, 1, scale},
+        vbo = vbo,
+        ibo = ibo
+    }
 }

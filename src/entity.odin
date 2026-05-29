@@ -2,6 +2,7 @@ package obj_viewer
 
 import "core:fmt"
 import "core:slice"
+import lg "core:math/linalg"
 import rand "core:math/rand"
 import rd "../Redef/src"
 
@@ -97,6 +98,7 @@ entity_from_asset :: proc(scene: ^Scene, asset_name: string, entity_name: string
 
     entity.id = id
     entity.physics.scale = 1
+    entity.physics.rotation = lg.QUATERNIONF32_IDENTITY
 
     assert(used_ids[id] == false)
     append_soa(&scene.entities, entity)

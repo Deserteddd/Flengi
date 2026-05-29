@@ -19,6 +19,7 @@ AssetInstance :: struct {
 
 SaveFile :: struct {
 	checkpoint: [2]vec3,
+    noclip:     bool,
 	assets:     map[string]string, // name, path
 	entities:   []EntitySerialized,
 }
@@ -38,18 +39,17 @@ PhysicsSerialized :: struct {
 
 write_save_file :: proc(scene: Scene, loc := #caller_location) {
 	save := SaveFile {
+        checkpoint = g.player.noclip ? get_player_translation() : g.player.checkpoint,
+        noclip   = g.player.noclip,
 		entities = make([]EntitySerialized, len(scene.entities), context.temp_allocator),
 		assets   = make(map[string]string, context.temp_allocator),
 	}
-	if !g.player.noclip do save.checkpoint = g.player.checkpoint
-	else do save.checkpoint = get_player_translation()
 
 	for a in scene.assets {
 		save.assets[a.name] = a.path
 	}
 
 	for e, i in scene.entities {
-
 		rx, ry, rz := lg.euler_angles_from_quaternion(e.physics.rotation, .XYZ)
 		save.entities[i] = EntitySerialized {
 			id = e.id,
@@ -97,7 +97,7 @@ load_save_file :: proc(path: string) -> SaveFile {
 
 load_scene :: proc(path: string) -> Scene {
 	entity_from_serialized :: proc(scene: Scene, serialized: EntitySerialized) -> Entity {
-        entity: Entity
+		entity: Entity
 		entity.id = serialized.id
 		assert(used_ids[serialized.id] == false)
 		used_ids[serialized.id] = true
@@ -129,6 +129,7 @@ load_scene :: proc(path: string) -> Scene {
 	save_file := load_save_file(path)
 	defer free_save_file(save_file)
 	create_player(save_file.checkpoint.x, save_file.checkpoint.y)
+    g.player.noclip = save_file.noclip
 
 	assets: [dynamic]Asset
 	for asset, asset_path in save_file.assets {
@@ -160,11 +161,7 @@ load_sprite :: proc(path: string, loc := #caller_location) -> Sprite {
 	texture := rd.create_texture(pixels, size_u32.x, size_u32.y)
 	free_pixels(pixels)
 
-	file_name := strings.split(path, "/", context.temp_allocator)
-	name_split := strings.split(file_name[len(file_name) - 1], ".", context.temp_allocator)
-	name := strings.clone(name_split[0])
-
-	return Sprite{name, texture, size}
+	return Sprite{texture, size}
 }
 
 load_pixels_byte :: proc(path: string, loc := #caller_location) -> (pixels: []byte, size: [2]i32) {
