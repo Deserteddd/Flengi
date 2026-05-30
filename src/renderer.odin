@@ -58,9 +58,6 @@ Renderer :: struct {
 	crosshair:        Sprite,
 	quad:             Quad,
 	plane:			  Plane,
-    noise_tex:        Sprite,
-    foam_tex:         Sprite,
-    DuDv:             Sprite,
 }
 
 shader_ui :: #load("../shaders/ui.hlsl")
@@ -102,9 +99,7 @@ RND_Init :: proc() {
 		},
 	)
 
-    r.foam_tex  = load_sprite("assets/images/foam_seamless.jpg")
-    r.noise_tex = load_sprite("assets/images/perlin_noise.png")
-    r.DuDv      = load_sprite("assets/images/DuDv.png")
+	env_map := rd.create_environment_map()
 
 	r.plane = new_plane(1400)
 
@@ -216,9 +211,6 @@ draw_scene :: proc(scene: ^Scene) {
 	rd.bind(&g.renderer.vs_ocean)
 	rd.bind(&g.renderer.plane.vbo)
 	rd.bind(&g.renderer.plane.ibo)
-    // rd.bind(&g.renderer.noise_tex.texture, 1)
-    // rd.bind(&g.renderer.DuDv.texture, 2)
-    // rd.bind(&g.renderer.foam_tex.texture, 3)
     rd.set_blend_mode(.Alpha)
 	time := time.duration_seconds(time.since(g.time))
 	rd.push_constant_data(.Vertex, &time, 1)

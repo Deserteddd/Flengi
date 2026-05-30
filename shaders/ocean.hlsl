@@ -117,7 +117,7 @@ float4 ps_main(Output input) : SV_Target0 {
     float3 R = reflect(-V, N);
     float3 env = srgb_to_linear(cubeMap.Sample(cubeSmp, R).rgb);
 
-    float3 deep_color = float3(0.00, 0.08, 0.16);
+    float3 deep_color = float3(0.00, 0.04, 0.1);
     float fresnel = pow(1.0 - saturate(dot(N, V)), 5.0);
     float3 F0 = float3(0.02, 0.02, 0.02);
     float3 F = lerp(F0, 1.0, fresnel);
@@ -129,5 +129,5 @@ float4 ps_main(Output input) : SV_Target0 {
 
     color = color / (color + 1.0);
     color = pow(color, 1.0 / 2.2);
-    return float4(color, 0.5);
+    return float4(color, 0.8);
 }

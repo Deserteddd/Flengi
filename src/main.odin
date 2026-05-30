@@ -34,10 +34,11 @@ main :: proc() {
     scene := load_scene("out/savefile")
     log.debugf("Program initialized successfully")
     run(&scene)
+    rd.destroy_window()
 }
 
 init :: proc() {
-    ok := rd.create_window("Demo window", 1280, 720, ODIN_DEBUG); assert(ok)
+    ok := rd.create_window("Demo window", 1280, 720, true); assert(ok)
     rd.set_relative_mouse_mode()
     RND_Init()
     g.camera.fov = 90
