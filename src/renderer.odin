@@ -18,7 +18,6 @@ FragUBOGlobal :: struct {
 	light_color:     vec3,
 	light_intensity: f32,
 	view_pos:        vec3,
-	_:               f32,
 }
 
 SkyboxUBO :: struct {
@@ -99,7 +98,7 @@ RND_Init :: proc() {
 		},
 	)
 
-	env_map := rd.create_environment_map()
+	// env_map := rd.create_environment_map()
 
 	r.plane = new_plane(1400)
 
@@ -266,7 +265,6 @@ UBO2D :: struct {
 	rect:     Rect,
 	win_size: vec2,
 	use_tex:  b32,
-	_pad:     b32,
 	color:    vec4,
 }
 

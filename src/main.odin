@@ -38,7 +38,7 @@ main :: proc() {
 }
 
 init :: proc() {
-    ok := rd.create_window("Demo window", 1280, 720, true); assert(ok)
+    ok := rd.create_window("Demo window", 1280, 720, ODIN_DEBUG); assert(ok)
     rd.set_relative_mouse_mode()
     RND_Init()
     g.camera.fov = 90
@@ -116,7 +116,7 @@ update :: proc(scene: ^Scene) -> (exit: bool) {
     if !g.running do return
     p := &g.player
     update_camera()
-    update_player(scene^)
+    update_player()
 
     if g.lmb_click {
         index := spawn_entity(scene, "mappi", true)
@@ -135,6 +135,7 @@ update :: proc(scene: ^Scene) -> (exit: bool) {
     closest_entity_index := -1
     found_collision: bool
     airborne_at_start := p.airborne
+
 
     for &entity, i in scene.entities {
         //Rotate

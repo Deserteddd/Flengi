@@ -80,11 +80,12 @@ AssetData :: struct {
     images:     [][]byte
 }
 
-load_asset_data :: proc(path: string, allocator := context.allocator) -> AssetData {
+load_asset_data :: proc(path: string, allocator := context.allocator) -> (AssetData, bool) {
     data: AssetData
     bin_asset, read_err := os.read_entire_file(path, allocator)
     if read_err != nil {
-        log.error("Failed to read asset binary:", path)
+        log.warn("Failed to read asset binary:", path)
+        return {}, false
     }
     data.file = bin_asset
     header_ptr := cast(^AssetHeader)&bin_asset[0]
@@ -112,7 +113,17 @@ load_asset_data :: proc(path: string, allocator := context.allocator) -> AssetDa
     }
     data.images = images[:]
 
-    return data
+    return data, true
+}
+
+create_mesh :: proc(asset: Asset) -> Mesh {
+    tris := make([][3]vec3, len(asset.data.indices)/3)
+    indices := asset.data.indices
+    verts := asset.data.vertices
+    for i: int; i<len(asset.data.indices); i += 3 {
+        tris[i/3] = {verts[indices[i]].pos, verts[indices[i+1]].pos, verts[indices[i+2]].pos}
+    }
+    return Mesh{ tris }
 }
 
 

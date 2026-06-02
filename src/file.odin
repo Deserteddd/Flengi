@@ -119,6 +119,7 @@ load_scene :: proc(path: string) -> Scene {
 			if asset.name == serialized.asset {
 				entity.asset_name = serialized.asset
 				entity.renderable = &scene.renderables[index]
+				entity.mesh = &scene.meshes[index]
 				break
 			}
 		}
@@ -133,20 +134,25 @@ load_scene :: proc(path: string) -> Scene {
 
 	assets: [dynamic]Asset
 	for asset, asset_path in save_file.assets {
-		data := load_asset_data(asset_path)
-		append(&assets, Asset{asset, asset_path, data})
+		data, ok := load_asset_data(asset_path)
+		if ok do append(&assets, Asset{asset, asset_path, data})
 	}
 	scene.assets = assets[:]
 
 	scene.renderables = make([]Renderable, len(scene.assets))
+	scene.meshes = make([]Mesh, len(scene.assets))
 	for &asset, i in scene.assets {
 		scene.renderables[i] = create_render_object(&asset)
+		scene.meshes[i] = create_mesh(asset)
 	}
+
 
 	for entity in save_file.entities {
 		append(&scene.entities, entity_from_serialized(scene, entity))
 	}
-
+	for &asset in assets {
+		delete(asset.data.file)
+	}
 	return scene
 }
 

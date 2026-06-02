@@ -34,7 +34,7 @@ get_player_translation :: proc() -> [2]vec3 {
     }
 }
 
-update_player :: proc(scene: Scene) {
+update_player :: proc() {
     G :: 25
     p := &g.player
     dt := g.dt

@@ -13,6 +13,7 @@ Entity :: struct {
     name:       string,
     asset_name: string,
     renderable: ^Renderable,
+    mesh:       ^Mesh,
     physics:    Physics,
     in_frustum: bool
 }
@@ -38,6 +39,10 @@ Physics :: struct {
     speed: vec3,
     rotation: quaternion128,
     aabb: AABB
+}
+
+Mesh :: struct {
+    tris: [][3]vec3
 }
 
 used_ids: map[EntityID]bool
@@ -84,6 +89,7 @@ entity_from_asset :: proc(scene: ^Scene, asset_name: string, entity_name: string
     for asset, i in scene.assets {
         if asset.name == asset_name {
             entity.renderable = &scene.renderables[i]
+            entity.mesh = &scene.meshes[i]
             entity.physics.aabb = asset.data.header.aabb
             entity.asset_name = asset.name
             break
