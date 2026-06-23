@@ -1,10 +1,12 @@
 package obj_viewer
 
 
-import rd "../Redef/src"
-import "core:log"
+import rd "../Redef"
 import lg "core:math/linalg"
-import "core:time"
+import "core:fmt"
+
+import im "shared:imgui"
+import im_d3d11 "shared:imgui/imgui_impl_dx11"
 
 PointLight :: struct {
 	position: vec3,
@@ -40,9 +42,12 @@ Camera :: struct {
 }
 
 
+
 Renderer :: struct {
 	vs_ui:            rd.VertexShader,
 	ps_ui:            rd.PixelShader,
+	vs_text:          rd.VertexShader,
+	ps_text:          rd.PixelShader,
 	vs_gfx:           rd.VertexShader,
 	ps_gfx:           rd.PixelShader,
 	vs_skybox:        rd.VertexShader,
@@ -54,26 +59,39 @@ Renderer :: struct {
 	fallback_texture: rd.Texture,
 	skybox_texture:   rd.TextureCube,
 	p_light:          PointLight,
-	crosshair:        Sprite,
+	crosshair:        rd.Texture,
 	quad:             Quad,
 	plane:			  Plane,
+	font_atlases:	  [FontSize]rd.Texture
 }
 
-shader_ui :: #load("../shaders/ui.hlsl")
-shader_gfx :: #load("../shaders/gfx.hlsl")
-shader_skybox :: #load("../shaders/skybox.hlsl")
-shader_aabb :: #load("../shaders/aabb.hlsl")
-shader_ocean :: #load("../shaders/ocean.hlsl")
+shader_ui :: #load("shaders/ui.hlsl")
+shader_text :: #load("shaders/text.hlsl")
+shader_gfx :: #load("shaders/gfx.hlsl")
+shader_skybox :: #load("shaders/skybox.hlsl")
+shader_aabb :: #load("shaders/aabb.hlsl")
+shader_ocean :: #load("shaders/ocean.hlsl")
 
 RND_Init :: proc() {
 	r := &g.renderer
 	ok: bool
 
 	r.quad = init_quad()
-	r.crosshair = load_sprite("assets/images/crosshair.png")
+	r.crosshair =  load_sprite("assets/images/crosshair.png")
+
+	r.font_atlases = {
+		._8  = load_sprite("assets/images/DejaVu Sans Mono-8.png"),
+		._10 = load_sprite("assets/images/DejaVu Sans Mono-10.png"),
+		._12 = load_sprite("assets/images/DejaVu Sans Mono-12.png"),
+		._14 = load_sprite("assets/images/DejaVu Sans Mono-14.png"),
+		._16 = load_sprite("assets/images/DejaVu Sans Mono-16.png"),
+	}
 
 	r.vs_ui, ok = rd.load_vertex_shader(shader_ui, "vs_main", Vertex2D); assert(ok)
 	r.ps_ui, ok = rd.load_pixel_shader(shader_ui, "ps_main"); assert(ok)
+
+	r.vs_text, ok = rd.load_vertex_shader(shader_text, "vs_main", Vertex2D); assert(ok)
+	r.ps_text, ok = rd.load_pixel_shader(shader_text, "ps_main"); assert(ok)
 
 	r.vs_gfx, ok = rd.load_vertex_shader(shader_gfx, "vs_main", Vertex); assert(ok)
 	r.ps_gfx, ok = rd.load_pixel_shader(shader_gfx, "ps_main"); assert(ok)
@@ -98,9 +116,7 @@ RND_Init :: proc() {
 		},
 	)
 
-	// env_map := rd.create_environment_map()
-
-	r.plane = new_plane(1400)
+	// r.plane = new_plane(1400)
 
 	r.p_light.color = 1
 
@@ -205,15 +221,17 @@ draw_scene :: proc(scene: ^Scene) {
 		}
 	}
 
-    // Ocean
-	rd.bind(&g.renderer.ps_ocean)
-	rd.bind(&g.renderer.vs_ocean)
-	rd.bind(&g.renderer.plane.vbo)
-	rd.bind(&g.renderer.plane.ibo)
-    rd.set_blend_mode(.Alpha)
-	time := time.duration_seconds(time.since(g.time))
-	rd.push_constant_data(.Vertex, &time, 1)
-	rd.draw_indexed(0, g.renderer.plane.num_indices)
+    // // Ocean
+	// rd.set_fill_mode(.WireFrame)
+	// rd.bind(&g.renderer.ps_ocean)
+	// rd.bind(&g.renderer.vs_ocean)
+	// rd.bind(&g.renderer.plane.vbo)
+	// rd.bind(&g.renderer.plane.ibo)
+    // rd.set_blend_mode(.Alpha)
+	// time := time.duration_seconds(time.since(g.time))
+	// rd.push_constant_data(.Vertex, &time, 1)
+	// rd.draw_indexed(0, g.renderer.plane.num_indices)
+	// rd.set_fill_mode(.Solid)
 
 
 }
@@ -251,11 +269,6 @@ Rect :: struct {
 	x, y, w, h: f32,
 }
 
-Sprite :: struct {
-	texture: rd.Texture,
-	size:    [2]i32,
-}
-
 Quad :: struct {
 	vbo: rd.VertexBuffer,
 	ibo: rd.IndexBuffer,
@@ -266,6 +279,22 @@ UBO2D :: struct {
 	win_size: vec2,
 	use_tex:  b32,
 	color:    vec4,
+}
+
+
+TextUBO :: struct {
+	win_size: vec2,
+	pos:	  vec2,
+	src:	  Rect,
+	tex_size: vec2
+}
+
+FontSize :: enum {
+	_8,
+	_10,
+	_12,
+	_14,
+	_16
 }
 
 init_quad :: proc() -> Quad {
@@ -289,17 +318,17 @@ init_quad :: proc() -> Quad {
 	return Quad{vbo, ibo}
 }
 
-draw_sprite :: proc(sprite: Sprite, pos: vec2 = 0, scale: f32 = 1) {
+draw_sprite :: proc(sprite: rd.Texture, pos: vec2 = 0, scale: f32 = 1) {
 	rd.set_blend_mode(.Alpha)
 	sprite := sprite
 	win_size := rd.get_window_size()
 
-	x := pos == 0 ? win_size.x / 2 - f32(sprite.size.x) / 2 : pos.x
-	y := pos == 0 ? win_size.y / 2 - f32(sprite.size.y) / 2 : pos.y
+	x := pos == 0 ? win_size.x / 2 - f32(sprite.width) / 2 : pos.x
+	y := pos == 0 ? win_size.y / 2 - f32(sprite.height) / 2 : pos.y
 
 	ubo := UBO2D {
-		rect     = {x, y, f32(sprite.size.x) * scale, f32(sprite.size.y) * scale},
-		win_size = rd.get_window_size(),
+		rect     = {x, y, f32(sprite.width) * scale, f32(sprite.height) * scale},
+		win_size = win_size,
 		use_tex  = true,
 	}
 
@@ -308,7 +337,53 @@ draw_sprite :: proc(sprite: Sprite, pos: vec2 = 0, scale: f32 = 1) {
 	rd.bind(&r.ps_ui)
 	rd.bind(&r.quad.vbo)
 	rd.bind(&r.quad.ibo)
-	rd.bind(&r.crosshair.texture)
+	rd.bind(&sprite)
 	rd.push_constant_data(.Vertex, &ubo, 0)
 	rd.draw_indexed(0, 6)
+}
+
+
+draw_text :: proc(text: string, pos: vec2, size: FontSize) {
+	rd.set_blend_mode(.Alpha)
+	sprite := g.renderer.font_atlases[size]
+	win_size := rd.get_window_size()
+
+	r := &g.renderer
+	rd.bind(&r.vs_text)
+	rd.bind(&r.ps_text)
+	rd.bind(&r.quad.vbo)
+	rd.bind(&r.quad.ibo)
+	rd.bind(&sprite)
+
+	get_atlas_position :: proc(c: rune) -> vec2 {
+		col := int(c)/16
+		row := int(c)%16
+		return {f32(row), f32(col)}
+	}
+
+	col: f32 = 0
+	row: f32 = 0
+	for char, i in text {
+		if char == '\n' {
+			row += 1
+			col = 0
+			continue
+		}
+		defer col += 1
+		atlas_slot := get_atlas_position(char)
+		ubo := TextUBO {
+			win_size = win_size,
+			src      = {
+				atlas_slot.x*32+1, atlas_slot.y*32+1, 
+				f32(sprite.width)/16-1, f32(sprite.height)/16-1
+			},
+			tex_size = {f32(sprite.width), f32(sprite.height)},
+			pos		 = pos + {col * (8 + f32(size)-1), row * 32}
+		}
+
+		rd.push_constant_data(.Vertex, &ubo, 0)
+		rd.push_constant_data(.Pixel, &ubo, 0)
+		rd.draw_indexed(0, 6)
+	}
+
 }

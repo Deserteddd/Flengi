@@ -3,7 +3,7 @@ package obj_viewer
 import "core:math"
 import "core:log"
 import lg "core:math/linalg"
-import rd "../Redef/src"
+import rd "../Redef"
 
 Player :: struct {
     position,

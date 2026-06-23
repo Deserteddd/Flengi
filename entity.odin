@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:slice"
 import lg "core:math/linalg"
 import rand "core:math/rand"
-import rd "../Redef/src"
+import rd "../Redef"
 
 EntityID :: distinct u32
 

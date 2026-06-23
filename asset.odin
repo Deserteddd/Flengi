@@ -82,9 +82,10 @@ AssetData :: struct {
 
 load_asset_data :: proc(path: string, allocator := context.allocator) -> (AssetData, bool) {
     data: AssetData
+    path := resolve_project_path(path)
     bin_asset, read_err := os.read_entire_file(path, allocator)
     if read_err != nil {
-        log.warn("Failed to read asset binary:", path)
+        log.errorf("Failed to read asset binary \"%v\" (%v)", path, read_err)
         return {}, false
     }
     data.file = bin_asset

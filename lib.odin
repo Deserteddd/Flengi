@@ -3,7 +3,7 @@ import "core:math"
 import "core:math/linalg"
 import "core:math/rand"
 import lg "core:math/linalg"
-import rd "../Redef/src"
+import rd "../Redef"
 
 vec2 :: [2]f32
 vec3 :: [3]f32

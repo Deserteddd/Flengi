@@ -1,11 +1,11 @@
 package obj_viewer
 
-import rd "../Redef/src"
+import rd "../Redef"
 import "core:encoding/json"
 import "core:log"
-import "core:math"
 import lg "core:math/linalg"
 import "core:os"
+import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import stbi "vendor:stb/image"
@@ -38,6 +38,8 @@ PhysicsSerialized :: struct {
 }
 
 write_save_file :: proc(scene: Scene, loc := #caller_location) {
+	save_path := resolve_project_path("savefile.json", loc)
+	log.info(save_path)
 	save := SaveFile {
         checkpoint = g.player.noclip ? get_player_translation() : g.player.checkpoint,
         noclip   = g.player.noclip,
@@ -46,6 +48,7 @@ write_save_file :: proc(scene: Scene, loc := #caller_location) {
 	}
 
 	for a in scene.assets {
+		log.infof("Name: %v, Path: %v", a.name, a.path)
 		save.assets[a.name] = a.path
 	}
 
@@ -73,13 +76,14 @@ write_save_file :: proc(scene: Scene, loc := #caller_location) {
 	if err != nil {
 		log.errorf("Error marshaling json: %v", err)
 	}
-	write_err := os.write_entire_file("out/savefile.json", json_data)
+	write_err := os.write_entire_file(save_path, json_data)
 	assert(err == nil)
 	log.infof("%v: Save file writing successful", loc)
 }
 
 load_save_file :: proc(path: string) -> SaveFile {
 	result: SaveFile
+	path := resolve_project_path(path)
 	json_filename := strings.concatenate({path, ".json"}, context.temp_allocator)
 	json_data, err := os.read_entire_file_from_path(json_filename, context.temp_allocator)
 	if err != nil {
@@ -123,7 +127,6 @@ load_scene :: proc(path: string) -> Scene {
 				break
 			}
 		}
-
 		return entity
 	}
 	scene: Scene
@@ -135,7 +138,9 @@ load_scene :: proc(path: string) -> Scene {
 	assets: [dynamic]Asset
 	for asset, asset_path in save_file.assets {
 		data, ok := load_asset_data(asset_path)
-		if ok do append(&assets, Asset{asset, asset_path, data})
+		if ok {
+			append(&assets, Asset{asset, asset_path, data})
+		}
 	}
 	scene.assets = assets[:]
 
@@ -161,16 +166,17 @@ free_save_file :: proc(savefile: SaveFile) {
 	delete(savefile.entities)
 }
 
-load_sprite :: proc(path: string, loc := #caller_location) -> Sprite {
+load_sprite :: proc(path: string, loc := #caller_location) -> rd.Texture {
 	pixels, size := load_pixels_byte(path); assert(pixels != nil)
 	size_u32: [2]u32 = {u32(size.x), u32(size.y)}
 	texture := rd.create_texture(pixels, size_u32.x, size_u32.y)
 	free_pixels(pixels)
 
-	return Sprite{texture, size}
+	return texture
 }
 
 load_pixels_byte :: proc(path: string, loc := #caller_location) -> (pixels: []byte, size: [2]i32) {
+	path := resolve_project_path(path, loc)
 	path_cstr := strings.clone_to_cstring(path, context.temp_allocator)
 	pixel_data := stbi.load(path_cstr, &size.x, &size.y, nil, 4)
 	if pixel_data == nil {
@@ -207,7 +213,22 @@ free_pixels :: proc {
 	free_pixels_u16,
 }
 
+resolve_project_path :: proc(path: string, loc := #caller_location) -> string {
+	if path == "" || os.is_absolute_path(path) {
+		return path
+	}
+
+	base_dir := filepath.dir(loc.file_path)
+	resolved, err := os.join_path({base_dir, path}, context.temp_allocator)
+	if err != nil {
+		log.errorf("Failed to resolve project path %q from %q: %v", path, base_dir, err)
+		return path
+	}
+	return resolved
+}
+
 load_pixels_u16 :: proc(path: string) -> (pixels: []u16, size: [2]i32) {
+	path := resolve_project_path(path)
 	path_cstr := strings.clone_to_cstring(path, context.temp_allocator)
 	pixel_data := stbi.load_16(path_cstr, &size.x, &size.y, nil, 1); assert(pixel_data != nil)
 	pixels = slice.from_ptr(pixel_data, int(size.x * size.y))

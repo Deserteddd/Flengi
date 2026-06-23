@@ -2,8 +2,9 @@ package obj_viewer
 
 import "core:log"
 import "core:time"
+import "core:os"
 import lg "core:math/linalg"
-import rd "../Redef/src"
+import rd "../Redef"
 
 g := struct {
     player:      Player,
@@ -31,8 +32,7 @@ g := struct {
 main :: proc() {
     context.logger = log.create_console_logger()
     init()
-    scene := load_scene("out/savefile")
-    log.debugf("Program initialized successfully")
+    scene := load_scene("savefile")
     run(&scene)
     rd.destroy_window()
 }
