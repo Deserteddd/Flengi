@@ -117,7 +117,7 @@ update :: proc(scene: ^Scene) -> (exit: bool) {
     p := &g.player
     update_camera()
     update_player()
-
+    //
     if g.lmb_click {
         index := spawn_entity(scene, "mappi", true)
         scene.entities[index].physics.scale = {1, 0.2, 1}
