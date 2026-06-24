@@ -5,17 +5,19 @@ import "core:time"
 import "core:os"
 import lg "core:math/linalg"
 import rd "../Redef"
+import im "shared:imgui"
+import im_win32 "shared:imgui/imgui_impl_win32"
 
 g := struct {
-    player:      Player,
-    camera:      Camera,
-    renderer:    Renderer,
-    selected:    EntityID,
-    frame:       uint,
+    player:         Player,
+    camera:         Camera,
+    renderer:       Renderer,
+    selected:       EntityID,
+    frame:          uint,
+    ui_context:     ^im.Context, 
     mouse_sense,
-    dt,
-    fov:         f32,
-    time:		 time.Time,
+    dt:             f32,
+    time:           time.Time,
     lmb_click,
     rmb_click,
     vsync,
@@ -23,10 +25,12 @@ g := struct {
     running: bool
 
 } {
-    fov = 90,
     mouse_sense = 0.04,
     running = true,
-    vsync   = true
+    vsync   = true,
+    camera = {
+        fov = 90
+    }
 }
 
 main :: proc() {
@@ -41,13 +45,11 @@ init :: proc() {
     ok := rd.create_window("Demo window", 1280, 720, ODIN_DEBUG); assert(ok)
     rd.set_relative_mouse_mode()
     RND_Init()
+    rd.set_vsync(g.vsync)
+    init_imgui()
     g.camera.fov = 90
     g.time = time.now()
-    rd.set_vsync(g.vsync)
-
 }
-
-
 
 run :: proc(scene: ^Scene) {
     now := time.now()
@@ -62,7 +64,6 @@ run :: proc(scene: ^Scene) {
             //     now = time.now()
             // }
         }
-
         g.dt = f32(rd.get_dt() / 1000)
         for event in rd.pump_event_iter(){
             #partial switch ev in event {
@@ -107,13 +108,34 @@ run :: proc(scene: ^Scene) {
         update(scene)
         rd.clear({135, 206, 250, 255})
         draw_scene(scene)
-        draw_sprite(g.renderer.crosshair)
+        if !g.running do draw_imgui(scene)
+        else do draw_sprite(g.renderer.crosshair)
         rd.frame_end()
     }
 }
 
 update :: proc(scene: ^Scene) -> (exit: bool) {
-    if !g.running do return
+    if !g.running {
+        if g.lmb_click {
+            mx, my := rd.get_mouse_position()
+            win_size := rd.get_window_size()
+            ray_origin, ray_dir := ray_from_screen(g.camera, {mx, my}, win_size)
+            closest_hit: f32 = max(f32)
+            closest_entity: EntityID = 0
+            for &entity in scene.entities {
+                ensure(entity.id != 0)
+                intersection := ray_intersect_aabb(ray_origin, ray_dir, get_entity_aabb(entity))
+                if intersection != -1 && intersection < closest_hit {
+                    closest_hit = intersection
+                    closest_entity = entity.id
+                }
+            }
+            if closest_entity != 0 {
+                g.selected = closest_entity
+            }
+        }
+        return
+    }
     p := &g.player
     update_camera()
     update_player()
