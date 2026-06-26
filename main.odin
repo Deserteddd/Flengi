@@ -106,8 +106,9 @@ run :: proc(scene: ^Scene) {
         }
 
         update(scene)
-        rd.clear({135, 206, 250, 255})
+        rd.clear()
         draw_scene(scene)
+        post_process()
         if !g.running do draw_imgui(scene)
         else do draw_sprite(g.renderer.crosshair)
         rd.frame_end()

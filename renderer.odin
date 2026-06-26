@@ -3,7 +3,7 @@ package obj_viewer
 
 import rd "../Redef"
 import lg "core:math/linalg"
-import "core:fmt"
+import "core:time"
 
 import im "shared:imgui"
 import im_d3d11 "shared:imgui/imgui_impl_dx11"
@@ -142,7 +142,6 @@ Camera :: struct {
 	position: vec3,
 	pitch:    f32,
 	yaw:      f32,
-	fov:      f32,
 }
 
 
@@ -166,10 +165,12 @@ Renderer :: struct {
 	crosshair:        rd.Texture,
 	quad:             Quad,
 	plane:			  Plane,
-	font_atlases:	  [FontSize]rd.Texture
+	font_atlases:	  [FontSize]rd.Texture,
+
+	ps_fog:  		  rd.PixelShader,
 }
 
-shader_ui :: #load("shaders/ui.hlsl")
+shader_2D :: #load("shaders/2D.hlsl")
 shader_text :: #load("shaders/text.hlsl")
 shader_gfx :: #load("shaders/gfx.hlsl")
 shader_skybox :: #load("shaders/skybox.hlsl")
@@ -191,8 +192,8 @@ RND_Init :: proc() {
 		._16 = load_sprite("assets/images/DejaVu Sans Mono-16.png"),
 	}
 
-	r.vs_ui, ok = rd.load_vertex_shader(shader_ui, "vs_main", Vertex2D); assert(ok)
-	r.ps_ui, ok = rd.load_pixel_shader(shader_ui, "ps_main"); assert(ok)
+	r.vs_ui, ok = rd.load_vertex_shader(shader_2D, "vs_main", Vertex2D); assert(ok)
+	r.ps_ui, ok = rd.load_pixel_shader(shader_2D, "ps_main"); assert(ok)
 
 	r.vs_text, ok = rd.load_vertex_shader(shader_text, "vs_main", Vertex2D); assert(ok)
 	r.ps_text, ok = rd.load_pixel_shader(shader_text, "ps_main"); assert(ok)
@@ -209,6 +210,8 @@ RND_Init :: proc() {
 	r.vs_ocean, ok = rd.load_vertex_shader(shader_ocean, "vs_main", VertexAABB); assert(ok)
 	r.ps_ocean, ok = rd.load_pixel_shader(shader_ocean, "ps_main"); assert(ok)
 
+	r.ps_fog, ok = rd.load_pixel_shader(shader_2D, "ps_fog"); assert(ok)
+
 	r.skybox_texture = load_cubemap_texture(
 		{
 			.PX = "assets/images/skybox_sea/px.png",
@@ -220,7 +223,7 @@ RND_Init :: proc() {
 		},
 	)
 
-	// r.plane = new_plane(1400)
+	r.plane = new_plane(100)
 
 	r.p_light.color = 1
 
@@ -265,14 +268,14 @@ draw_scene :: proc(scene: ^Scene) {
 	view_matrix := create_view_matrix(g.camera)
 
     // Skybox
-	inv_view_mat := lg.inverse(view_matrix)
-	inv_proj_mat := lg.inverse(proj_matrix)
-	rd.push_constant_data(.Vertex, &SkyboxUBO{inv_view_mat, inv_proj_mat}, 0)
-	rd.set_blend_mode(.Skybox)
+	// inv_view_mat := lg.inverse(view_matrix)
+	// inv_proj_mat := lg.inverse(proj_matrix)
+	// rd.push_constant_data(.Vertex, &SkyboxUBO{inv_view_mat, inv_proj_mat}, 0)
+	// rd.set_blend_mode(.Skybox)
 	rd.bind(&g.renderer.skybox_texture, 0)
-	rd.bind(&g.renderer.vs_skybox)
-	rd.bind(&g.renderer.ps_skybox)
-	rd.draw(3)
+	// rd.bind(&g.renderer.vs_skybox)
+	// rd.bind(&g.renderer.ps_skybox)
+	// rd.draw(3)
 
 	vp := proj_matrix * view_matrix
 	rd.push_constant_data(.Vertex, &vp, 0)
@@ -300,7 +303,6 @@ draw_scene :: proc(scene: ^Scene) {
 			)
 			rd.push_constant_data(.Vertex, &model_matrix, 1)
 			for &primitive in ro.primitives {
-
 				rd.push_constant_data(.Pixel, &primitive.material_id, 1)
 				rd.draw_indexed(primitive.index_start, primitive.index_count)
 			}
@@ -322,7 +324,6 @@ draw_scene :: proc(scene: ^Scene) {
 		rd.bind(&ro.aabb)
 		rd.bind(&g.renderer.vs_aabb)
 		rd.bind(&g.renderer.ps_aabb)
-
 		for entity in scene.entities {
 			if entity.renderable != &ro || !entity.in_frustum do continue
 			model_matrix := lg.matrix4_from_trs(
@@ -335,19 +336,56 @@ draw_scene :: proc(scene: ^Scene) {
 		}
 	}
 
-    // // Ocean
-	// rd.set_fill_mode(.WireFrame)
-	// rd.bind(&g.renderer.ps_ocean)
-	// rd.bind(&g.renderer.vs_ocean)
-	// rd.bind(&g.renderer.plane.vbo)
-	// rd.bind(&g.renderer.plane.ibo)
-    // rd.set_blend_mode(.Alpha)
-	// time := time.duration_seconds(time.since(g.time))
-	// rd.push_constant_data(.Vertex, &time, 1)
-	// rd.draw_indexed(0, g.renderer.plane.num_indices)
-	// rd.set_fill_mode(.Solid)
+    // Ocean
+
+	rd.bind(&g.renderer.ps_ocean)
+	rd.bind(&g.renderer.vs_ocean)
+	rd.bind(&g.renderer.plane.vbo)
+	rd.bind(&g.renderer.plane.ibo)
+
+	ocean_ubo := struct {
+		vp: matrix[4,4]f32,
+		player_position: vec2
+	} {
+		vp, g.camera.position.xz
+	}
+	rd.push_constant_data(.Vertex, &ocean_ubo, 0)
+
+	time := time.duration_seconds(time.since(g.time))
+	// time = 1
+	rd.push_constant_data(.Vertex, &time, 1)
+	
+	rd.draw_indexed(0, g.renderer.plane.num_indices)
+	rd.set_fill_mode(.Solid)
+}
 
 
+import d3d "vendor:directx/d3d11"
+post_process :: proc() {
+	// Apply fog
+	win_size := rd.get_window_size()
+	ubo := UBO2D {
+		rect     = {0, 0, win_size.x, win_size.y},
+		win_size = win_size,
+		use_tex  = true,
+	}
+	depth_texture := rd.get_depth_texture()
+
+	proj_matrix := create_proj_matrix(g.camera)
+	inv_proj_mat := lg.inverse(proj_matrix)
+
+	r := &g.renderer
+	rd.g.graphics.ctx->OMSetRenderTargets(1, &rd.g.graphics.target, nil)
+	rd.set_blend_mode(.Alpha)
+	rd.bind(&r.vs_ui)
+	rd.bind(&g.renderer.ps_fog)
+	rd.bind(&r.quad.vbo)
+	rd.bind(&r.quad.ibo)
+	rd.bind(depth_texture, 0)
+	rd.push_constant_data(.Vertex, &ubo, 0)
+	rd.push_constant_data(.Pixel, &inv_proj_mat, 0)
+	rd.draw_indexed(0, 6)
+	rd.g.graphics.ctx->OMSetRenderTargets(1, &rd.g.graphics.target, rd.g.graphics.dsv)
 }
 
 

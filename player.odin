@@ -9,6 +9,7 @@ Player :: struct {
     position,
     speed,
     rotation:   vec3,
+	fov:        f32,
     bbox:       AABB,
     airborne,
     noclip:     bool,
@@ -86,8 +87,8 @@ player_wish_speed :: proc() -> vec3 {
     fb := f32(int(rd.is_key_down(.S))-int(rd.is_key_down(.W)))
     lr := f32(int(rd.is_key_down(.D))-int(rd.is_key_down(.A)))
 
-    yaw_cos := math.cos(math.to_radians(g.player.rotation.y))
-    yaw_sin := math.sin(math.to_radians(g.player.rotation.y))
+    yaw_cos := math.cos(math.to_radians(g.camera.yaw))
+    yaw_sin := math.sin(math.to_radians(g.camera.yaw))
 
     wish_speed.y = u * f32(int(!g.player.airborne))
     if g.player.noclip do wish_speed.y = u-d

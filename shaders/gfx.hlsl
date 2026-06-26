@@ -61,9 +61,11 @@ StructuredBuffer<Material> materials : register(t2);
 
 cbuffer FragUBO : register(b0) {
     float3 light_pos;
+    float  _pad0;
     float3 light_color;
     float  light_intensity;
     float3 camera_pos;
+    float  _pad1;
 }
 
 cbuffer MaterialID : register(b1) {

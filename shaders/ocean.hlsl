@@ -10,8 +10,9 @@ struct Output {
     float3 normal : normal;
 };
 
-cbuffer VP : register(b0) {
+cbuffer VertUBO : register(b0) {
     float4x4 vp;
+    float2 player_position;
 }
 
 cbuffer Global : register(b1) {
@@ -97,9 +98,11 @@ Output vs_main(Input input) {
     float3 normal = normalize(cross(bitangent, tangent));
 
     float4 worldPosition = float4(pos, 1);
+    worldPosition.xz += player_position;
     output.clip_position = mul(vp, worldPosition);
     output.world_position = worldPosition.xyz;
     output.normal = normal;
+
     return output;
 }
 
@@ -129,5 +132,5 @@ float4 ps_main(Output input) : SV_Target0 {
 
     color = color / (color + 1.0);
     color = pow(color, 1.0 / 2.2);
-    return float4(color, 0.8);
+    return float4(color, 0.6);
 }
