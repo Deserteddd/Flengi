@@ -8,9 +8,10 @@ import rd "../Redef"
 import im "shared:imgui"
 import im_win32 "shared:imgui/imgui_impl_win32"
 
+DEBUG_DRAW :: false
+
 g := struct {
     player:         Player,
-    camera:         Camera,
     renderer:       Renderer,
     selected:       EntityID,
     frame:          uint,
@@ -28,9 +29,6 @@ g := struct {
     mouse_sense = 0.04,
     running = true,
     vsync   = true,
-    camera = {
-        fov = 90
-    }
 }
 
 main :: proc() {
@@ -47,7 +45,7 @@ init :: proc() {
     RND_Init()
     rd.set_vsync(g.vsync)
     init_imgui()
-    g.camera.fov = 90
+    g.player.fov = 90
     g.time = time.now()
 }
 
@@ -120,7 +118,7 @@ update :: proc(scene: ^Scene) -> (exit: bool) {
         if g.lmb_click {
             mx, my := rd.get_mouse_position()
             win_size := rd.get_window_size()
-            ray_origin, ray_dir := ray_from_screen(g.camera, {mx, my}, win_size)
+            ray_origin, ray_dir := ray_from_screen({mx, my}, win_size)
             closest_hit: f32 = max(f32)
             closest_entity: EntityID = 0
             for &entity in scene.entities {
@@ -147,13 +145,13 @@ update :: proc(scene: ^Scene) -> (exit: bool) {
         scene.entities[index].physics.position += {0, 2, 0}
     }
 
-    proj_matrix := create_proj_matrix(g.camera)
-    view_matrix := create_view_matrix(g.camera)
+    proj_matrix := create_proj_matrix()
+    view_matrix := create_view_matrix()
     vp := proj_matrix * view_matrix
     frustum := get_furustum_planes(vp)
 
     win_size := rd.get_window_size()
-    origin, dir := ray_from_screen(g.camera, win_size / 2, win_size)
+    origin, dir := ray_from_screen(win_size / 2, win_size)
     closest_hit: f32 = max(f32)
     closest_entity_index := -1
     found_collision: bool
@@ -214,15 +212,14 @@ update :: proc(scene: ^Scene) -> (exit: bool) {
 }
 
 update_camera :: proc() {
-    camera := &g.camera
     x, y := rd.get_relative_mouse_movement()
     x *= g.mouse_sense
     y *= g.mouse_sense
     g.player.rotation.y += x
     g.player.rotation.x = lg.min(g.player.rotation.x + y, 90)
     if g.player.rotation.x < -90 do g.player.rotation.x = -90
-    camera.pitch = g.player.rotation.x
-    camera.yaw = g.player.rotation.y
-    camera.position = g.player.position
-    camera.position.y += 2
+    // camera.pitch = g.player.rotation.x
+    // camera.yaw = g.player.rotation.y
+    // camera.position = g.player.position
+    // camera.position.y += 2
 }

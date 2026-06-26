@@ -115,6 +115,7 @@ float3 srgb_to_linear(float3 c) {
 
 float4 ps_main(Output input) : SV_Target0 {
     float3 N = normalize(input.normal);
+    // N = min(float3(0.5, 0.5, 0.5), N);
     float3 V = normalize(camera_pos - input.world_position);
 
     float3 R = reflect(-V, N);

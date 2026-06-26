@@ -139,12 +139,11 @@ resolve_aabb_collision_mtv :: proc(moving: AABB, solid: AABB) -> vec3 {
 }
 
 ray_from_screen :: proc(
-    camera:        Camera,
     screen_pos:    vec2,
     viewport_size: vec2
 ) -> (origin, direction: vec3) {
-    proj_matrix := create_proj_matrix(camera)
-    view_matrix := create_view_matrix(camera)
+    proj_matrix := create_proj_matrix()
+    view_matrix := create_view_matrix()
     vp := proj_matrix * view_matrix
     // normalize to NDC (-1..1)
     ndc_x := (2.0 * screen_pos.x) / viewport_size.x - 1.0

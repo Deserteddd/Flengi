@@ -25,7 +25,12 @@ create_player :: proc(pos: vec3 = 0, rotation: vec3 = 0) {
             max = pos + {0.3, 2.0, 0.3}
         },
         checkpoint = {pos, rotation},
+        fov = 90
     }
+}
+
+camera_position :: proc() -> vec3 {
+    return g.player.position + {0, 2, 0}
 }
 
 get_player_translation :: proc() -> [2]vec3 {
@@ -87,8 +92,8 @@ player_wish_speed :: proc() -> vec3 {
     fb := f32(int(rd.is_key_down(.S))-int(rd.is_key_down(.W)))
     lr := f32(int(rd.is_key_down(.D))-int(rd.is_key_down(.A)))
 
-    yaw_cos := math.cos(math.to_radians(g.camera.yaw))
-    yaw_sin := math.sin(math.to_radians(g.camera.yaw))
+    yaw_cos := math.cos(math.to_radians(g.player.rotation.y))
+    yaw_sin := math.sin(math.to_radians(g.player.rotation.y))
 
     wish_speed.y = u * f32(int(!g.player.airborne))
     if g.player.noclip do wish_speed.y = u-d

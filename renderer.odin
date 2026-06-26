@@ -44,7 +44,7 @@ draw_imgui :: proc(scene: ^Scene) {
                 // --- General Tab ---
                 if im.BeginTabItem("Point light") {
                     defer im.EndTabItem()
-                    im.DragFloat("FOV", &g.camera.fov, 1, 50, 140)
+                    im.DragFloat("FOV", &g.player.fov, 1, 50, 140)
                     im.LabelText("", "Point Light")
                     im.DragFloat("intensity", &g.renderer.p_light.power, 1, 0, 10000)
                     im.ColorPicker3("color", &g.renderer.p_light.color, {.InputRGB})
@@ -124,6 +124,7 @@ FragUBOGlobal :: struct {
 	light_color:     vec3,
 	light_intensity: f32,
 	view_pos:        vec3,
+	_:				 f32
 }
 
 SkyboxUBO :: struct {
@@ -223,7 +224,7 @@ RND_Init :: proc() {
 		},
 	)
 
-	r.plane = new_plane(100)
+	r.plane = new_plane(200)
 
 	r.p_light.color = 1
 
@@ -256,7 +257,7 @@ create_render_object :: proc(asset: ^Asset) -> Renderable {
 
 create_frag_ubo :: #force_inline proc() -> FragUBOGlobal {
 	return FragUBOGlobal {
-		view_pos = g.camera.position,
+		view_pos = camera_position(),
 		light_pos = g.renderer.p_light.position,
 		light_color = g.renderer.p_light.color,
 		light_intensity = g.renderer.p_light.power,
@@ -264,18 +265,11 @@ create_frag_ubo :: #force_inline proc() -> FragUBOGlobal {
 }
 
 draw_scene :: proc(scene: ^Scene) {
-	proj_matrix := create_proj_matrix(g.camera)
-	view_matrix := create_view_matrix(g.camera)
+	proj_matrix := create_proj_matrix()
+	view_matrix := create_view_matrix()
 
-    // Skybox
-	// inv_view_mat := lg.inverse(view_matrix)
-	// inv_proj_mat := lg.inverse(proj_matrix)
-	// rd.push_constant_data(.Vertex, &SkyboxUBO{inv_view_mat, inv_proj_mat}, 0)
-	// rd.set_blend_mode(.Skybox)
 	rd.bind(&g.renderer.skybox_texture, 0)
-	// rd.bind(&g.renderer.vs_skybox)
-	// rd.bind(&g.renderer.ps_skybox)
-	// rd.draw(3)
+
 
 	vp := proj_matrix * view_matrix
 	rd.push_constant_data(.Vertex, &vp, 0)
@@ -317,7 +311,7 @@ draw_scene :: proc(scene: ^Scene) {
 			}
 		}
 
-		if !rd.debug_mode() do continue
+		if !DEBUG_DRAW do continue
 		rd.set_primitive_topology(.lineList)
 		defer rd.set_primitive_topology(.triangleList)
 
@@ -347,7 +341,7 @@ draw_scene :: proc(scene: ^Scene) {
 		vp: matrix[4,4]f32,
 		player_position: vec2
 	} {
-		vp, g.camera.position.xz
+		vp, camera_position().xz
 	}
 	rd.push_constant_data(.Vertex, &ocean_ubo, 0)
 
@@ -357,6 +351,16 @@ draw_scene :: proc(scene: ^Scene) {
 	
 	rd.draw_indexed(0, g.renderer.plane.num_indices)
 	rd.set_fill_mode(.Solid)
+
+
+    // Skybox
+	inv_view_mat := lg.inverse(view_matrix)
+	inv_proj_mat := lg.inverse(proj_matrix)
+	rd.push_constant_data(.Vertex, &SkyboxUBO{inv_view_mat, inv_proj_mat}, 0)
+	rd.set_blend_mode(.Skybox)
+	rd.bind(&g.renderer.vs_skybox)
+	rd.bind(&g.renderer.ps_skybox)
+	rd.draw(3)
 }
 
 
@@ -371,8 +375,13 @@ post_process :: proc() {
 	}
 	depth_texture := rd.get_depth_texture()
 
-	proj_matrix := create_proj_matrix(g.camera)
+	view_matrix := create_view_matrix()
+	proj_matrix := create_proj_matrix()
+	
+	inv_view_mat := lg.inverse(view_matrix)
 	inv_proj_mat := lg.inverse(proj_matrix)
+
+	inv_matricies: struct {v: mat4, p: mat4} = {inv_view_mat, inv_proj_mat}
 
 	r := &g.renderer
 	rd.g.graphics.ctx->OMSetRenderTargets(1, &rd.g.graphics.target, nil)
@@ -383,7 +392,7 @@ post_process :: proc() {
 	rd.bind(&r.quad.ibo)
 	rd.bind(depth_texture, 0)
 	rd.push_constant_data(.Vertex, &ubo, 0)
-	rd.push_constant_data(.Pixel, &inv_proj_mat, 0)
+	rd.push_constant_data(.Pixel, &inv_matricies, 0)
 	rd.draw_indexed(0, 6)
 	rd.g.graphics.ctx->OMSetRenderTargets(1, &rd.g.graphics.target, rd.g.graphics.dsv)
 }
@@ -396,17 +405,17 @@ get_furustum_planes :: proc(vp: matrix[4, 4]f32) -> [6]vec4 {
 }
 
 
-create_view_matrix :: proc(camera: Camera) -> lg.Matrix4f32 {
-	pitch_matrix := lg.matrix4_rotate_f32(to_radians(camera.pitch), {1, 0, 0})
-	yaw_matrix := lg.matrix4_rotate_f32(to_radians(camera.yaw), {0, 1, 0})
-	position_matrix := lg.inverse(lg.matrix4_translate_f32(camera.position))
+create_view_matrix :: proc() -> lg.Matrix4f32 {
+	pitch_matrix := lg.matrix4_rotate_f32(to_radians(g.player.rotation.x), {1, 0, 0})
+	yaw_matrix := lg.matrix4_rotate_f32(to_radians(g.player.rotation.y), {0, 1, 0})
+	position_matrix := lg.inverse(lg.matrix4_translate_f32(camera_position()))
 	return pitch_matrix * yaw_matrix * position_matrix
 }
 
-create_proj_matrix :: proc(camera: Camera, loc := #caller_location) -> mat4 {
+create_proj_matrix :: proc(loc := #caller_location) -> mat4 {
 	win_size := rd.get_window_size()
 	aspect := win_size.x / win_size.y
-	return lg.matrix4_perspective_f32(to_radians(camera.fov), aspect, 0.01, 1000)
+	return lg.matrix4_perspective_f32(to_radians(g.player.fov), aspect, 0.01, 1000)
 }
 
 // ----------------------------

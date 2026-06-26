@@ -28,7 +28,7 @@ Output vs_main(Input input) {
 
     output.clip_position = float4(clip_pos, 0.0f, 1.0f);
     output.uv = input.uv;
-    if (textured) {
+    if (textured) { //TODO: Move textured to ps ubo
         output.color.r = -1;
     } else {
         output.color = color;
@@ -50,47 +50,61 @@ float4 ps_main(Output input) : SV_Target {
 
 Texture2D<float> depth_texture : register(t0);
 cbuffer Global : register(b0) {
+	float4x4 invViewMat;
 	float4x4 invProjectionMat;
 }
 
 float3 ReconstructViewPos(float2 uv, float depth)
 {
-    // Muunnetaan UV-koordinaatit NDC-avaruuteen (-1 -> 1)
     float2 ndc;
     ndc.x = uv.x * 2.0f - 1.0f;
-    ndc.y = (1.0f - uv.y) * 2.0f - 1.0f; // Varmistetaan Y-akselin suunta
+    ndc.y = (1.0f - uv.y) * 2.0f - 1.0f;
 
     float ndc_depth = depth; 
 
     float4 clip = float4(ndc.x, ndc.y, ndc_depth, 1.0f);
 
-    float4 view = mul(invProjectionMat, clip); // HUOM: Järjestys voi olla myös mul(clip, invProjectionMat) riippuen matriisin tyypistä (row-major vs column-major)
+    float4 view = mul(invProjectionMat, clip);
     
-    // Perspektiivijako (TÄMÄ ON KRIITTINEN: Jos view.w on 0 tai lähellä sitä, jakolasku epäonnistuu)
     if (abs(view.w) > 0.000001f)
     {
-        view.xyz /= view.w;
+        view /= view.w;
     }
 
     return view.xyz;
 }
+
 float4 ps_fog(Output input) : SV_TARGET
 {
     float depth = depth_texture.Sample(smp0, input.uv).r;
 
+    // Skip skybox
+    // if (depth >= 0.9999f)
+    //     return float4(0,0,0,0);
+
     float3 viewPos = ReconstructViewPos(input.uv, depth);
     float dist = length(viewPos);
 
-    float FogStart = 30.0f;
-    float FogEnd = 120.0f;
+    // Distance fog
+    float FogStart = 60.0f;
+    float FogEnd   = 160.0f;
+
     float fog = saturate((dist - FogStart) / (FogEnd - FogStart));
 
     float invFog = 1.0f - fog;
+    fog = 1.0f - invFog * invFog * invFog;
 
-    fog = 1.0f - (invFog * invFog * invFog);
-    return float4(1, 1, 1, fog);
+    // World-space height
+    float4 worldPos = mul(invViewMat, float4(viewPos, 1.0f));
+
+    float FogBottom = 0.0f;
+    float FogTop    = 30.0f;
+
+    float heightFog = 1.0f - smoothstep(FogBottom, FogTop, worldPos.y);
+
+    // fog *= heightFog;
+    // if (worldPos.y > 0) return float4(1, 1, 1, 1);
+
+
+    return float4(0.45f, 0.5f, 0.6f, fog);
 }
-
-
-
-

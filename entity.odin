@@ -55,7 +55,7 @@ spawn_entity :: proc(scene: ^Scene, asset: string, under_player: bool) -> (index
         entity.physics.position = get_player_translation().x - {0, get_entity_aabb(entity^).max.y, 0}
     } else {
         screen_size := rd.get_window_size()
-        origin, dir := ray_from_screen(g.camera, screen_size/2, screen_size)
+        origin, dir := ray_from_screen(screen_size/2, screen_size)
         entity.physics.position = origin + 10*dir
     }
     return
