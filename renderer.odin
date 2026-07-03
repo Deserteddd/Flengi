@@ -5,111 +5,6 @@ import rd "../Redef"
 import lg "core:math/linalg"
 import "core:time"
 
-import im "shared:imgui"
-import im_d3d11 "shared:imgui/imgui_impl_dx11"
-import im_win32 "shared:imgui/imgui_impl_win32"
-import "core:strings"
-
-init_imgui :: proc() {
-    assert(rd.g.graphics_init)
-    if g.ui_context != nil {
-        im_win32.Shutdown()
-        im_d3d11.Shutdown()
-        im.Shutdown()
-        im.DestroyContext(g.ui_context)
-    }
-    im.CHECKVERSION()
-    g.ui_context = im.CreateContext()
-	ok := im_win32.Init(auto_cast rd.g.window.handle); assert(ok)
-	ok = im_d3d11.Init(rd.g.graphics.device, rd.g.graphics.ctx); assert(ok)
-}
-
-draw_imgui :: proc(scene: ^Scene) {
-	io := im.GetIO()
-	io.DisplaySize = rd.get_window_size()
-	io.DeltaTime = lg.max(g.dt, 1.0 / 1000.0)
-
-	im_win32.NewFrame()
-    im_d3d11.NewFrame()
-    im.NewFrame()
-    // w, h: i32
-    // sdl.GetWindowSize(g.window, &w, &h)
-        if im.Begin("properties", nil, {.NoTitleBar, .NoResize, .NoMove}) {
-            defer im.End()
-            im.SetWindowPos({0, 0})
-            im.SetWindowSize({300, io.DisplaySize.y})
-            if im.BeginTabBar("PropertiesTabs") {
-                defer im.EndTabBar()
-
-                // --- General Tab ---
-                if im.BeginTabItem("Point light") {
-                    defer im.EndTabItem()
-                    im.DragFloat("FOV", &g.player.fov, 1, 50, 140)
-                    im.LabelText("", "Point Light")
-                    im.DragFloat("intensity", &g.renderer.p_light.power, 1, 0, 10000)
-                    im.ColorPicker3("color", &g.renderer.p_light.color, {.InputRGB})
-                }
-            }
-        }
-		if im.Begin("entities", nil, {.NoTitleBar, .NoResize, .NoMove}) {
-            defer im.End()
-			rect := Rect{f32(io.DisplaySize.x)-300, 0, 300, f32(io.DisplaySize.y)}
-
-            im.SetWindowPos({io.DisplaySize.x-rect.w, 0})
-            im.SetWindowSize({rect.w, rect.h})
-
-            selected_index := -1
-			im.LabelText("", "Entities")
-            if im.BeginListBox(" ", {rect.w-rect.w/10, rect.h/8}) {
-                for e, i in scene.entities {
-                    im.PushIDInt(i32(e.id))
-                    name_cstr := strings.unsafe_string_to_cstring(e.name)
-                    selected := e.id == g.selected
-                    if im.Selectable(name_cstr, selected) {
-                        g.selected = e.id
-                    }
-                    if selected {
-                        // im.ScrollToItem()
-                        selected_index = i
-                    }
-                    im.PopID()
-                }
-                im.EndListBox()
-            }
-            if selected_index != -1 && im.BeginChild("Lapsonen") {
-				im.Separator()
-                s := &scene.entities[selected_index]
-				im.LabelText("", "Physics")
-                im.DragFloat3("Position", &s.physics.position, 0.01)
-                im.DragFloat3("Scale",    &s.physics.scale, 0.01)
-				im.Separator()
-                if im.Button("Delete") {
-                    ok := remove_entity(scene, g.selected)
-                    assert(ok)
-                }
-                if im.Button("Duplicate") {
-                    index := entity_from_asset(scene, s.asset_name)
-                    offset := s.physics.aabb.min * 2 * s.physics.scale
-					scene.entities[index].physics = s.physics				
-					scene.entities[index].physics.position += {offset.x, 0, 0}
-					scene.entities[index].in_frustum = true
-					
-
-                    g.selected = scene.entities[index].id
-                }
-                im.EndChild()
-
-                for &axis in s.physics.scale do axis = max(0.01, axis)
-            }
-
-        }
-
-    im.Render()
-    im_draw_data := im.GetDrawData(); assert(im_draw_data != nil)
-
-	im_d3d11.RenderDrawData(im_draw_data)
-}
-
 
 
 PointLight :: struct {
@@ -127,10 +22,6 @@ FragUBOGlobal :: struct {
 	_:				 f32
 }
 
-SkyboxUBO :: struct {
-	inv_view, inv_proj: matrix[4, 4]f32,
-}
-
 VertexAABB :: struct {
 	position: vec3,
 }
@@ -144,7 +35,6 @@ Camera :: struct {
 	pitch:    f32,
 	yaw:      f32,
 }
-
 
 
 Renderer :: struct {
@@ -178,7 +68,7 @@ shader_skybox :: #load("shaders/skybox.hlsl")
 shader_aabb :: #load("shaders/aabb.hlsl")
 shader_ocean :: #load("shaders/ocean.hlsl")
 
-RND_Init :: proc() {
+init_renderer :: proc() {
 	r := &g.renderer
 	ok: bool
 
@@ -289,6 +179,10 @@ draw_scene :: proc(scene: ^Scene) {
 
 		for entity in scene.entities {
 			if entity.renderable != &ro || !entity.in_frustum do continue
+			if entity.material_overrides != {} {
+				override_values := entity.override_values
+				rd.push_constant_data(.Pixel, &override_values, 2)
+			}
 
 			model_matrix := lg.matrix4_from_trs(
 				entity.physics.position,
@@ -297,10 +191,12 @@ draw_scene :: proc(scene: ^Scene) {
 			)
 			rd.push_constant_data(.Vertex, &model_matrix, 1)
 			for &primitive in ro.primitives {
-				rd.push_constant_data(.Pixel, &primitive.material_id, 1)
+				instance_data: struct {u32, u32} = {primitive.material_id, transmute(u32)entity.material_overrides}
+				rd.push_constant_data(.Pixel, &instance_data, 1)
 				rd.draw_indexed(primitive.index_start, primitive.index_count)
 			}
 
+			// Selected entity's 
 			if !g.running && g.selected == entity.id {
 				rd.bind(&g.renderer.vs_aabb); defer rd.bind(&g.renderer.vs_gfx)
 				rd.bind(&g.renderer.ps_aabb); defer rd.bind(&g.renderer.ps_gfx)
@@ -332,31 +228,32 @@ draw_scene :: proc(scene: ^Scene) {
 
     // Ocean
 
-	rd.bind(&g.renderer.ps_ocean)
-	rd.bind(&g.renderer.vs_ocean)
-	rd.bind(&g.renderer.plane.vbo)
-	rd.bind(&g.renderer.plane.ibo)
+	// rd.bind(&g.renderer.ps_ocean)
+	// rd.bind(&g.renderer.vs_ocean)
+	// rd.bind(&g.renderer.plane.vbo)
+	// rd.bind(&g.renderer.plane.ibo)
 
-	ocean_ubo := struct {
-		vp: matrix[4,4]f32,
-		player_position: vec2
-	} {
-		vp, camera_position().xz
-	}
-	rd.push_constant_data(.Vertex, &ocean_ubo, 0)
+	// ocean_ubo := struct {
+	// 	vp: matrix[4,4]f32,
+	// 	player_position: vec2
+	// } {
+	// 	vp, camera_position().xz
+	// }
+	// rd.push_constant_data(.Vertex, &ocean_ubo, 0)
 
-	time := time.duration_seconds(time.since(g.time))
-	// time = 1
-	rd.push_constant_data(.Vertex, &time, 1)
+	// time := time.duration_seconds(time.since(g.time))
+	// // time = 1
+	// rd.push_constant_data(.Vertex, &time, 1)
 	
-	rd.draw_indexed(0, g.renderer.plane.num_indices)
-	rd.set_fill_mode(.Solid)
+	// rd.draw_indexed(0, g.renderer.plane.num_indices)
 
 
     // Skybox
 	inv_view_mat := lg.inverse(view_matrix)
 	inv_proj_mat := lg.inverse(proj_matrix)
-	rd.push_constant_data(.Vertex, &SkyboxUBO{inv_view_mat, inv_proj_mat}, 0)
+	inv_matricies: struct {v: mat4, p: mat4} = {inv_view_mat, inv_proj_mat}
+
+	rd.push_constant_data(.Vertex, &inv_matricies, 0)
 	rd.set_blend_mode(.Skybox)
 	rd.bind(&g.renderer.vs_skybox)
 	rd.bind(&g.renderer.ps_skybox)
@@ -380,7 +277,6 @@ post_process :: proc() {
 	
 	inv_view_mat := lg.inverse(view_matrix)
 	inv_proj_mat := lg.inverse(proj_matrix)
-
 	inv_matricies: struct {v: mat4, p: mat4} = {inv_view_mat, inv_proj_mat}
 
 	r := &g.renderer

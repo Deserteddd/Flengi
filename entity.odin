@@ -8,14 +8,28 @@ import rd "../Redef"
 
 EntityID :: distinct u32
 
+
 Entity :: struct {
     id:         EntityID,
     name:       string,
     asset_name: string,
     renderable: ^Renderable,
     mesh:       ^Mesh,
+    
+    material_overrides: bit_set[MaterialAttribute; u32],
+    override_values: struct {
+        color: vec4,
+        metallic: f32,
+        roughness: f32,
+    },
     physics:    Physics,
     in_frustum: bool
+}
+
+MaterialAttribute :: enum {
+    Color,
+    Metallic,
+    Roughness,
 }
 
 Renderable :: struct {

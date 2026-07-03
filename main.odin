@@ -6,7 +6,6 @@ import "core:os"
 import lg "core:math/linalg"
 import rd "../Redef"
 import im "shared:imgui"
-import im_win32 "shared:imgui/imgui_impl_win32"
 
 DEBUG_DRAW :: false
 
@@ -23,7 +22,7 @@ g := struct {
     rmb_click,
     vsync,
     fullscreen,
-    running: bool
+    running: bool,
 
 } {
     mouse_sense = 0.04,
@@ -42,9 +41,11 @@ main :: proc() {
 init :: proc() {
     ok := rd.create_window("Demo window", 1280, 720, ODIN_DEBUG); assert(ok)
     rd.set_relative_mouse_mode()
-    RND_Init()
-    rd.set_vsync(g.vsync)
+
+    init_renderer()
     init_imgui()
+
+    rd.set_vsync(g.vsync)
     g.player.fov = 90
     g.time = time.now()
 }
@@ -118,9 +119,10 @@ update :: proc(scene: ^Scene) -> (exit: bool) {
         if g.lmb_click {
             mx, my := rd.get_mouse_position()
             win_size := rd.get_window_size()
+            if mx < 300 || mx > win_size.x - 300 do return // Check click in viewport
             ray_origin, ray_dir := ray_from_screen({mx, my}, win_size)
             closest_hit: f32 = max(f32)
-            closest_entity: EntityID = 0
+            closest_entity: EntityID
             for &entity in scene.entities {
                 ensure(entity.id != 0)
                 intersection := ray_intersect_aabb(ray_origin, ray_dir, get_entity_aabb(entity))
@@ -131,6 +133,8 @@ update :: proc(scene: ^Scene) -> (exit: bool) {
             }
             if closest_entity != 0 {
                 g.selected = closest_entity
+            } else {
+                g.selected = 0
             }
         }
         return
@@ -218,8 +222,4 @@ update_camera :: proc() {
     g.player.rotation.y += x
     g.player.rotation.x = lg.min(g.player.rotation.x + y, 90)
     if g.player.rotation.x < -90 do g.player.rotation.x = -90
-    // camera.pitch = g.player.rotation.x
-    // camera.yaw = g.player.rotation.y
-    // camera.position = g.player.position
-    // camera.position.y += 2
 }

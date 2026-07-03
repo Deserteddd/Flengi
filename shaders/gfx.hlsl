@@ -1,4 +1,6 @@
 #define NO_TEX 4294967295
+#define CHECK_BIT(var,pos) ((var) & (1<<(pos)))
+
 
 struct Input {
     float3 pos      : pos;
@@ -30,8 +32,8 @@ Output vs_main(Input input) {
     output.clipPosition = mul(vp, worldPosition);
     output.uv = input.uv;
     output.worldPos = worldPosition.xyz;
-    output.normal = normalize(mul((float3x3)modelMat, input.normal));
-    output.tangent = float4(normalize(mul((float3x3)modelMat, input.tangent.xyz)), input.tangent.w);
+    output.normal = normalize(mul(input.normal, (float3x3)modelMat));
+    output.tangent = float4(normalize(mul(modelMat, input.tangent)).xyz, input.tangent.w);
     return output;
 }
 
@@ -65,11 +67,17 @@ cbuffer FragUBO : register(b0) {
     float3 light_color;
     float  light_intensity;
     float3 camera_pos;
-    float  _pad1;
 }
 
 cbuffer MaterialID : register(b1) {
     uint material_id;
+    uint material_overrides;
+}
+
+cbuffer MaterialOverrides : register(b2) {
+    float4 color_override;
+    float metallic_override;
+    float roughness_override;
 }
 
 #define PI 3.14159265
@@ -124,6 +132,7 @@ float4 ps_main(Output input, bool is_front_face : SV_IsFrontFace) : SV_Target {
     if (mat.base_color_tex != NO_TEX) {
         base_color *= tex_array.Sample(samp, float3(input.uv, mat.base_color_tex));
     }
+    if (CHECK_BIT(material_overrides, 0)) base_color = color_override;
 
     if (mat.alpha_mode == 1) {
         clip(base_color.a - mat.alpha_cutoff);
@@ -137,7 +146,9 @@ float4 ps_main(Output input, bool is_front_face : SV_IsFrontFace) : SV_Target {
         metallic *= mr.b;
     }
     metallic = saturate(metallic);
+    if (CHECK_BIT(material_overrides, 1)) metallic = metallic_override;
     roughness = saturate(roughness);
+    if (CHECK_BIT(material_overrides, 2)) roughness = roughness_override;
 
 
     float3 N = get_normal(input, mat.normal_tex);
@@ -189,6 +200,7 @@ float4 ps_main(Output input, bool is_front_face : SV_IsFrontFace) : SV_Target {
     float3 color = ambient + Lo + emissive + env_spec;
 
     color = color / (color + 1.0);
+
     color = pow(color, 1.0 / 2.2);
 
     return float4(color, base_color.a);

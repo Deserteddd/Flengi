@@ -1,4 +1,4 @@
-struct Input {
+struct Vertex2D {
     float2 position : position; // in GL clip space (-1..1)
     float2 uv       : uv;
 };
@@ -16,7 +16,7 @@ cbuffer UBO : register(b0) {
     float4 color;
 };
 
-Output vs_main(Input input) {
+Output vs_main(Vertex2D input) {
     Output output;
 
     float2 center_clip = (xywh.xy + xywh.zw * 0.5f) / screen_size * 2.0f - 1.0f;
@@ -86,8 +86,8 @@ float4 ps_fog(Output input) : SV_TARGET
     float dist = length(viewPos);
 
     // Distance fog
-    float FogStart = 60.0f;
-    float FogEnd   = 160.0f;
+    float FogStart = 40.0f;
+    float FogEnd   = 100.0f;
 
     float fog = saturate((dist - FogStart) / (FogEnd - FogStart));
 
@@ -106,5 +106,5 @@ float4 ps_fog(Output input) : SV_TARGET
     // if (worldPos.y > 0) return float4(1, 1, 1, 1);
 
 
-    return float4(0.45f, 0.5f, 0.6f, fog);
+    return float4(0.6f, 0.6f, 0.6f, fog);
 }
