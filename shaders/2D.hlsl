@@ -52,6 +52,8 @@ Texture2D<float> depth_texture : register(t0);
 cbuffer Global : register(b0) {
 	float4x4 invViewMat;
 	float4x4 invProjectionMat;
+    float fogStart;
+    float fogEnd;
 }
 
 float3 ReconstructViewPos(float2 uv, float depth)
@@ -86,10 +88,8 @@ float4 ps_fog(Output input) : SV_TARGET
     float dist = length(viewPos);
 
     // Distance fog
-    float FogStart = 40.0f;
-    float FogEnd   = 100.0f;
 
-    float fog = saturate((dist - FogStart) / (FogEnd - FogStart));
+    float fog = saturate((dist - fogStart) / (fogEnd - fogStart));
 
     float invFog = 1.0f - fog;
     fog = 1.0f - invFog * invFog * invFog;
@@ -98,12 +98,11 @@ float4 ps_fog(Output input) : SV_TARGET
     float4 worldPos = mul(invViewMat, float4(viewPos, 1.0f));
 
     float FogBottom = 0.0f;
-    float FogTop    = 30.0f;
+    float FogTop    = 200.0f;
 
     float heightFog = 1.0f - smoothstep(FogBottom, FogTop, worldPos.y);
 
-    // fog *= heightFog;
-    // if (worldPos.y > 0) return float4(1, 1, 1, 1);
+    fog *= heightFog;
 
 
     return float4(0.6f, 0.6f, 0.6f, fog);

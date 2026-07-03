@@ -20,6 +20,7 @@ init_imgui :: proc() {
 	ok := im_win32.Init(auto_cast rd.g.window.handle); assert(ok)
 	ok = im_d3d11.Init(rd.g.graphics.device, rd.g.graphics.ctx); assert(ok)
 }
+import "core:log"
 
 draw_imgui :: proc(scene: ^Scene) {
 	io := im.GetIO()
@@ -37,9 +38,22 @@ draw_imgui :: proc(scene: ^Scene) {
                 defer im.EndTabBar()
 
                 // --- General Tab ---
-                if im.BeginTabItem("Point light") {
+                if im.BeginTabItem("General") {
                     defer im.EndTabItem()
                     im.DragFloat("FOV", &g.player.fov, 1, 50, 140)
+                    im.DragFloat("Mouse sense", &g.mouse_sense, 0.001, 0.001, 0.1)
+                    if im.Button("Recompile shaders") do compile_shaders()
+                    fog := &g.renderer.options
+                    im.Checkbox("Fog", &fog.fog)
+                    im.DragFloat("Near", &fog.fog_start, 1, 0, 200)
+                    if fog.fog_start > fog.fog_end {
+                        fog.fog_end = fog.fog_start
+                    }
+                    im.DragFloat("Far", &fog.fog_end, 1, 0, 200)
+                    if fog.fog_start > fog.fog_end {
+                        fog.fog_start = fog.fog_end
+                    }
+
                     im.LabelText("", "Point Light")
                     im.DragFloat("intensity", &g.renderer.p_light.power, 1, 0, 10000)
                     im.ColorPicker3("color", &g.renderer.p_light.color, {.InputRGB})

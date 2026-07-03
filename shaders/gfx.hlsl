@@ -191,10 +191,10 @@ float4 ps_main(Output input, bool is_front_face : SV_IsFrontFace) : SV_Target {
         emissive *= srgb_to_linear(tex_array.Sample(samp, float3(input.uv, mat.emissive_tex)).rgb);
     }
 
-    float3 ambient = 0.05 * albedo * ao;
 
     float3 R = reflect(-V, N);
     float3 env = srgb_to_linear(cubeMap.Sample(smp, R).rgb);
+    float3 ambient = 0.05 * albedo * ao;
     float3 env_spec = env * kS;
 
     float3 color = ambient + Lo + emissive + env_spec;

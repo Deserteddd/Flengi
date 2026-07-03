@@ -4,6 +4,8 @@ package obj_viewer
 import rd "../Redef"
 import lg "core:math/linalg"
 import "core:time"
+import "core:log"
+import "core:os"
 
 
 
@@ -59,18 +61,20 @@ Renderer :: struct {
 	font_atlases:	  [FontSize]rd.Texture,
 
 	ps_fog:  		  rd.PixelShader,
+
+    options: struct {
+        fog: bool,
+        fog_start,
+        fog_end: f32
+    }
 }
 
-shader_2D :: #load("shaders/2D.hlsl")
-shader_text :: #load("shaders/text.hlsl")
-shader_gfx :: #load("shaders/gfx.hlsl")
-shader_skybox :: #load("shaders/skybox.hlsl")
-shader_aabb :: #load("shaders/aabb.hlsl")
-shader_ocean :: #load("shaders/ocean.hlsl")
 
 init_renderer :: proc() {
 	r := &g.renderer
 	ok: bool
+
+    compile_shaders()
 
 	r.quad = init_quad()
 	r.crosshair =  load_sprite("assets/images/crosshair.png")
@@ -83,25 +87,7 @@ init_renderer :: proc() {
 		._16 = load_sprite("assets/images/DejaVu Sans Mono-16.png"),
 	}
 
-	r.vs_ui, ok = rd.load_vertex_shader(shader_2D, "vs_main", Vertex2D); assert(ok)
-	r.ps_ui, ok = rd.load_pixel_shader(shader_2D, "ps_main"); assert(ok)
 
-	r.vs_text, ok = rd.load_vertex_shader(shader_text, "vs_main", Vertex2D); assert(ok)
-	r.ps_text, ok = rd.load_pixel_shader(shader_text, "ps_main"); assert(ok)
-
-	r.vs_gfx, ok = rd.load_vertex_shader(shader_gfx, "vs_main", Vertex); assert(ok)
-	r.ps_gfx, ok = rd.load_pixel_shader(shader_gfx, "ps_main"); assert(ok)
-
-	r.vs_skybox, ok = rd.load_vertex_shader(shader_skybox, "vs_main", None); assert(ok)
-	r.ps_skybox, ok = rd.load_pixel_shader(shader_skybox, "ps_main"); assert(ok)
-
-	r.vs_aabb, ok = rd.load_vertex_shader(shader_aabb, "vs_main", VertexAABB); assert(ok)
-	r.ps_aabb, ok = rd.load_pixel_shader(shader_aabb, "ps_main"); assert(ok)
-
-	r.vs_ocean, ok = rd.load_vertex_shader(shader_ocean, "vs_main", VertexAABB); assert(ok)
-	r.ps_ocean, ok = rd.load_pixel_shader(shader_ocean, "ps_main"); assert(ok)
-
-	r.ps_fog, ok = rd.load_pixel_shader(shader_2D, "ps_fog"); assert(ok)
 
 	r.skybox_texture = load_cubemap_texture(
 		{
@@ -118,6 +104,63 @@ init_renderer :: proc() {
 
 	r.p_light.color = 1
 
+}
+
+compile_shaders :: proc() {
+	r := &g.renderer
+
+    defer free_all(context.temp_allocator)
+    load_shader :: proc(path: string, loc := #caller_location) -> []byte {
+        data, err := os.read_entire_file_from_path(path, context.temp_allocator)
+        if err != nil {
+            log.errorf("Error reading shader file: %v", path, location = loc)
+        }
+        return data
+    } 
+
+    shader_2D       := load_shader("shaders/2D.hlsl")
+    shader_text     := load_shader("shaders/text.hlsl")
+    shader_gfx      := load_shader("shaders/gfx.hlsl")
+    shader_skybox   := load_shader("shaders/skybox.hlsl")
+    shader_aabb     := load_shader("shaders/aabb.hlsl")
+    shader_ocean    := load_shader("shaders/ocean.hlsl")
+
+    compile_vs :: proc(
+        shader: ^rd.VertexShader, 
+        data: []byte, 
+        entry: string, 
+        $vertex_type: typeid) 
+    {
+        if shader.shader != nil do rd.destroy(shader)
+        ok: bool
+        shader^, ok = rd.load_vertex_shader(data, entry, vertex_type); assert(ok)
+    }
+
+    compile_ps :: proc(shader: ^rd.PixelShader, data: []byte, entry: string) {
+        if shader^ != nil do rd.destroy(shader)
+        ok: bool
+        shader^, ok = rd.load_pixel_shader(data, entry); assert(ok)
+    }
+
+    compile_vs(&r.vs_ui, shader_2D, "vs_main", Vertex2D)
+	compile_ps(&r.ps_ui, shader_2D, "ps_main")
+
+	compile_vs(&r.vs_text, shader_text, "vs_main", Vertex2D)
+	compile_ps(&r.ps_text, shader_text, "ps_main")
+
+	compile_vs(&r.vs_gfx, shader_gfx, "vs_main", Vertex)
+	compile_ps(&r.ps_gfx, shader_gfx, "ps_main")
+
+	compile_vs(&r.vs_skybox, shader_skybox, "vs_main", None)
+	compile_ps(&r.ps_skybox, shader_skybox, "ps_main")
+
+	compile_vs(&r.vs_aabb, shader_aabb, "vs_main", VertexAABB)
+	compile_ps(&r.ps_aabb, shader_aabb, "ps_main")
+
+	compile_vs(&r.vs_ocean, shader_ocean, "vs_main", VertexAABB)
+	compile_ps(&r.ps_ocean, shader_ocean, "ps_main")
+
+	compile_ps(&r.ps_fog, shader_2D, "ps_fog")
 }
 
 create_render_object :: proc(asset: ^Asset) -> Renderable {
@@ -228,24 +271,23 @@ draw_scene :: proc(scene: ^Scene) {
 
     // Ocean
 
-	// rd.bind(&g.renderer.ps_ocean)
-	// rd.bind(&g.renderer.vs_ocean)
-	// rd.bind(&g.renderer.plane.vbo)
-	// rd.bind(&g.renderer.plane.ibo)
+	rd.bind(&g.renderer.ps_ocean)
+	rd.bind(&g.renderer.vs_ocean)
+	rd.bind(&g.renderer.plane.vbo)
+	rd.bind(&g.renderer.plane.ibo)
 
-	// ocean_ubo := struct {
-	// 	vp: matrix[4,4]f32,
-	// 	player_position: vec2
-	// } {
-	// 	vp, camera_position().xz
-	// }
-	// rd.push_constant_data(.Vertex, &ocean_ubo, 0)
+	time := time.duration_seconds(time.since(g.time))
+	rd.push_constant_data(.Vertex, &time, 1)
 
-	// time := time.duration_seconds(time.since(g.time))
-	// // time = 1
-	// rd.push_constant_data(.Vertex, &time, 1)
-	
-	// rd.draw_indexed(0, g.renderer.plane.num_indices)
+	ocean_ubo := struct {
+		vp: matrix[4,4]f32,
+		position: vec2
+	} {
+		vp, g.player.position.xz
+	}
+
+    rd.push_constant_data(.Vertex, &ocean_ubo, 0)
+    rd.draw_indexed(0, g.renderer.plane.num_indices)
 
 
     // Skybox
@@ -263,7 +305,9 @@ draw_scene :: proc(scene: ^Scene) {
 
 import d3d "vendor:directx/d3d11"
 post_process :: proc() {
+
 	// Apply fog
+    if g.renderer.options.fog {
 	win_size := rd.get_window_size()
 	ubo := UBO2D {
 		rect     = {0, 0, win_size.x, win_size.y},
@@ -277,7 +321,12 @@ post_process :: proc() {
 	
 	inv_view_mat := lg.inverse(view_matrix)
 	inv_proj_mat := lg.inverse(proj_matrix)
-	inv_matricies: struct {v: mat4, p: mat4} = {inv_view_mat, inv_proj_mat}
+	b0: struct {_: mat4, _: mat4, _, _: f32} = {
+        inv_view_mat, 
+        inv_proj_mat, 
+        g.renderer.options.fog_start,
+        g.renderer.options.fog_end
+    }
 
 	r := &g.renderer
 	rd.g.graphics.ctx->OMSetRenderTargets(1, &rd.g.graphics.target, nil)
@@ -288,9 +337,10 @@ post_process :: proc() {
 	rd.bind(&r.quad.ibo)
 	rd.bind(depth_texture, 0)
 	rd.push_constant_data(.Vertex, &ubo, 0)
-	rd.push_constant_data(.Pixel, &inv_matricies, 0)
+	rd.push_constant_data(.Pixel, &b0, 0)
 	rd.draw_indexed(0, 6)
 	rd.g.graphics.ctx->OMSetRenderTargets(1, &rd.g.graphics.target, rd.g.graphics.dsv)
+    }
 }
 
 

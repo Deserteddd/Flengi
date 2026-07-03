@@ -28,6 +28,13 @@ g := struct {
     mouse_sense = 0.04,
     running = true,
     vsync   = true,
+    renderer = {
+        options = {
+            fog = true,
+            fog_start = 40,
+            fog_end = 160,
+        }
+    }
 }
 
 main :: proc() {

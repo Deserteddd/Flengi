@@ -95,13 +95,13 @@ Output vs_main(Input input) {
         apply_gerstner_wave(pos, tangent, bitangent, waves[i], t, 4.0);
     }
 
-    float3 normal = normalize(cross(bitangent, tangent));
+    float3 normal = 0.2 * normalize(cross(bitangent, tangent));
 
     float4 worldPosition = float4(pos, 1);
     worldPosition.xz += player_position;
     output.clip_position = mul(vp, worldPosition);
     output.world_position = worldPosition.xyz;
-    output.normal = normal;
+    output.normal = normalize(float3(0, 1, 0) + normal);
 
     return output;
 }
@@ -119,9 +119,10 @@ float4 ps_main(Output input) : SV_Target0 {
     float3 V = normalize(camera_pos - input.world_position);
 
     float3 R = reflect(-V, N);
+    R.y *= -1;
     float3 env = srgb_to_linear(cubeMap.Sample(cubeSmp, R).rgb);
 
-    float3 deep_color = float3(0.00, 0.04, 0.1);
+    float3 deep_color = float3(0.005, 0.02, 0.04);
     float fresnel = pow(1.0 - saturate(dot(N, V)), 5.0);
     float3 F0 = float3(0.02, 0.02, 0.02);
     float3 F = lerp(F0, 1.0, fresnel);
@@ -133,5 +134,5 @@ float4 ps_main(Output input) : SV_Target0 {
 
     color = color / (color + 1.0);
     color = pow(color, 1.0 / 2.2);
-    return float4(color, 0.6);
+    return float4(color, 1);
 }

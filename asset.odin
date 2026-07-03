@@ -30,6 +30,17 @@ AssetHeader :: struct {
     textures_offset:    u32,
 }
 
+AssetData :: struct {
+    header:     AssetHeader,
+    file:       []byte,
+    vertices:   []Vertex,
+    indices:    []u32,
+    primitives: []Primitive,
+    materials:  []Material,
+    textures:   []TextureInfo,
+    images:     [][]byte
+}
+
 Vertex :: struct {
     pos:        vec3,
     normal:     vec3,
@@ -69,16 +80,6 @@ TextureInfo :: struct {
     mip_count: u32
 }
 
-AssetData :: struct {
-    header:     AssetHeader,
-    file:       []byte,
-    vertices:   []Vertex,
-    indices:    []u32,
-    primitives: []Primitive,
-    materials:  []Material,
-    textures:   []TextureInfo,
-    images:     [][]byte
-}
 
 load_asset_data :: proc(path: string, allocator := context.allocator) -> (AssetData, bool) {
     data: AssetData
