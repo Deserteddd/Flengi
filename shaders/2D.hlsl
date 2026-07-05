@@ -48,13 +48,16 @@ float4 ps_main(Output input) : SV_Target {
     }
 }
 
-Texture2D<float> depth_texture : register(t0);
+
 cbuffer Global : register(b0) {
 	float4x4 invViewMat;
 	float4x4 invProjectionMat;
     float fogStart;
     float fogEnd;
 }
+
+Texture2D<float> depth_texture : register(t0);
+
 
 float3 ReconstructViewPos(float2 uv, float depth)
 {
@@ -103,7 +106,6 @@ float4 ps_fog(Output input) : SV_TARGET
     float heightFog = 1.0f - smoothstep(FogBottom, FogTop, worldPos.y);
 
     fog *= heightFog;
-
 
     return float4(0.6f, 0.6f, 0.6f, fog);
 }

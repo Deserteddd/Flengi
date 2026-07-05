@@ -118,12 +118,12 @@ compile_shaders :: proc() {
         return data
     } 
 
-    shader_2D       := load_shader("shaders/2D.hlsl")
-    shader_text     := load_shader("shaders/text.hlsl")
-    shader_gfx      := load_shader("shaders/gfx.hlsl")
-    shader_skybox   := load_shader("shaders/skybox.hlsl")
-    shader_aabb     := load_shader("shaders/aabb.hlsl")
-    shader_ocean    := load_shader("shaders/ocean.hlsl")
+    shader_2D       := load_shader(resolve_project_path("shaders/2D.hlsl"))
+    shader_text     := load_shader(resolve_project_path("shaders/text.hlsl"))
+    shader_gfx      := load_shader(resolve_project_path("shaders/gfx.hlsl"))
+    shader_skybox   := load_shader(resolve_project_path("shaders/skybox.hlsl"))
+    shader_aabb     := load_shader(resolve_project_path("shaders/aabb.hlsl"))
+    shader_ocean    := load_shader(resolve_project_path("shaders/ocean.hlsl"))
 
     compile_vs :: proc(
         shader: ^rd.VertexShader, 
@@ -163,12 +163,19 @@ compile_shaders :: proc() {
 	compile_ps(&r.ps_fog, shader_2D, "ps_fog")
 }
 
+import "core:hash"
+import "core:slice"
+
 create_render_object :: proc(asset: ^Asset) -> Renderable {
 	assert(asset != nil)
 	ro: Renderable
 	ro.vbo = rd.create_vertex_buffer(asset.data.vertices)
 	ro.ibo = rd.create_index_buffer(asset.data.indices)
-	ro.materials = rd.create_structured_buffer(asset.data.materials, {.Pixel})
+	ro.materials = MaterialCollection {
+        id = MaterialID(hash.adler32(transmute([]byte)asset.name)),
+        params = slice.clone(asset.data.materials),
+        params_buffer = rd.create_structured_buffer(asset.data.materials, {.Pixel}),
+    }
 
 	primitives: [dynamic]Primitive
 	for p in asset.data.primitives {
@@ -179,7 +186,7 @@ create_render_object :: proc(asset: ^Asset) -> Renderable {
 	if len(asset.data.textures) > 0 {
 		width := asset.data.textures[0].width
 		height := asset.data.textures[0].height
-		ro.textures = rd.create_texture_buffer(asset.data.images, width, height)
+		ro.materials.textures = rd.create_texture_buffer(asset.data.images, width, height)
 	}
 
 	aabb_verts := aabb_vertices(asset.data.header.aabb)
@@ -200,77 +207,63 @@ create_frag_ubo :: #force_inline proc() -> FragUBOGlobal {
 draw_scene :: proc(scene: ^Scene) {
 	proj_matrix := create_proj_matrix()
 	view_matrix := create_view_matrix()
-
-	rd.bind(&g.renderer.skybox_texture, 0)
-
-
 	vp := proj_matrix * view_matrix
 	rd.push_constant_data(.Vertex, &vp, 0)
-
 
 	frag_ubo := create_frag_ubo()
 	rd.push_constant_data(.Pixel, &frag_ubo, 0)
 
+	rd.bind(&g.renderer.skybox_texture, 0)
 	rd.set_blend_mode(.Opaque)
 	for &ro in scene.renderables {
 		rd.bind(&g.renderer.vs_gfx)
 		rd.bind(&g.renderer.ps_gfx)
-		rd.bind(&ro.textures, 1)
-		rd.bind(&ro.materials, 2)
+		rd.bind(&ro.materials.textures, 1)
+		rd.bind(&ro.materials.params_buffer, 2)
 		rd.bind(&ro.vbo)
 		rd.bind(&ro.ibo)
 
 		for entity in scene.entities {
 			if entity.renderable != &ro || !entity.in_frustum do continue
-			if entity.material_overrides != {} {
-				override_values := entity.override_values
-				rd.push_constant_data(.Pixel, &override_values, 2)
-			}
+            override_values := entity.material_overrides
+            rd.push_constant_data(.Pixel, &override_values, 2)
 
 			model_matrix := lg.matrix4_from_trs(
 				entity.physics.position,
 				entity.physics.rotation,
 				entity.physics.scale,
 			)
+
+			// material_overrides := transmute(u32)entity.material_overrides
+            // rd.push_constant_data(.Pixel, &material_overrides, 2)
 			rd.push_constant_data(.Vertex, &model_matrix, 1)
 			for &primitive in ro.primitives {
-				instance_data: struct {u32, u32} = {primitive.material_id, transmute(u32)entity.material_overrides}
-				rd.push_constant_data(.Pixel, &instance_data, 1)
+				rd.push_constant_data(.Pixel, &primitive.material_id, 1)
 				rd.draw_indexed(primitive.index_start, primitive.index_count)
 			}
 
 			// Selected entity's 
-			if !g.running && g.selected == entity.id {
+			if !g.running && g.selected_entity == entity.id {
 				rd.bind(&g.renderer.vs_aabb); defer rd.bind(&g.renderer.vs_gfx)
 				rd.bind(&g.renderer.ps_aabb); defer rd.bind(&g.renderer.ps_gfx)
 				rd.bind(&ro.aabb); defer rd.bind(&ro.vbo)
+                model_matrix = lg.matrix4_from_trs(
+                    entity.physics.position,
+                    lg.QUATERNIONF32_IDENTITY,
+                    entity.physics.scale,
+                )
+			    rd.push_constant_data(.Vertex, &model_matrix, 1)
+                select: b32 = true
+                rd.push_constant_data(.Pixel, &select, 1)
 				rd.set_primitive_topology(.lineList); defer rd.set_primitive_topology(.triangleList)
 				rd.draw(24)
+	            rd.push_constant_data(.Pixel, &frag_ubo, 0)
 
 			}
-		}
-
-		if !DEBUG_DRAW do continue
-		rd.set_primitive_topology(.lineList)
-		defer rd.set_primitive_topology(.triangleList)
-
-		rd.bind(&ro.aabb)
-		rd.bind(&g.renderer.vs_aabb)
-		rd.bind(&g.renderer.ps_aabb)
-		for entity in scene.entities {
-			if entity.renderable != &ro || !entity.in_frustum do continue
-			model_matrix := lg.matrix4_from_trs(
-				entity.physics.position,
-				lg.QUATERNIONF32_IDENTITY,
-				entity.physics.scale,
-			)
-			rd.push_constant_data(.Vertex, &model_matrix, 1)
-			rd.draw(24)
 		}
 	}
 
     // Ocean
-
 	rd.bind(&g.renderer.ps_ocean)
 	rd.bind(&g.renderer.vs_ocean)
 	rd.bind(&g.renderer.plane.vbo)
@@ -297,11 +290,37 @@ draw_scene :: proc(scene: ^Scene) {
 
 	rd.push_constant_data(.Vertex, &inv_matricies, 0)
 	rd.set_blend_mode(.Skybox)
+    rd.bind(&g.renderer.skybox_texture, 1)
 	rd.bind(&g.renderer.vs_skybox)
 	rd.bind(&g.renderer.ps_skybox)
 	rd.draw(3)
 }
 
+draw_aabbs :: proc(scene: ^Scene) {
+	proj_matrix := create_proj_matrix()
+	view_matrix := create_view_matrix()
+	vp := proj_matrix * view_matrix
+	rd.push_constant_data(.Vertex, &vp, 0)
+
+    rd.bind(&g.renderer.vs_aabb)
+    rd.bind(&g.renderer.ps_aabb)
+    rd.set_primitive_topology(.lineList); defer rd.set_primitive_topology(.triangleList)
+
+    for entity in scene.entities {
+        if entity.renderable == nil || !entity.in_frustum do continue
+
+        rd.bind(&entity.renderable.aabb);
+        model_matrix := lg.matrix4_from_trs(
+            entity.physics.position,
+            lg.QUATERNIONF32_IDENTITY,
+            entity.physics.scale,
+        )
+        rd.push_constant_data(.Vertex, &model_matrix, 1)
+        select: b32 = entity.id == g.selected_entity
+        rd.push_constant_data(.Pixel, &select, 1)
+        rd.draw(24)
+    }
+}
 
 import d3d "vendor:directx/d3d11"
 post_process :: proc() {
@@ -450,9 +469,10 @@ draw_sprite :: proc(sprite: rd.Texture, pos: vec2 = 0, scale: f32 = 1) {
 }
 
 
-draw_text :: proc(text: string, pos: vec2, size: FontSize) {
+draw_text :: proc(text: string, pos: vec2, size: FontSize, color: vec3) {
 	rd.set_blend_mode(.Alpha)
 	sprite := g.renderer.font_atlases[size]
+    color := color
 	win_size := rd.get_window_size()
 
 	r := &g.renderer
@@ -490,6 +510,7 @@ draw_text :: proc(text: string, pos: vec2, size: FontSize) {
 
 		rd.push_constant_data(.Vertex, &ubo, 0)
 		rd.push_constant_data(.Pixel, &ubo, 0)
+        rd.push_constant_data(.Pixel, &color, 1)
 		rd.draw_indexed(0, 6)
 	}
 

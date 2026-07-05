@@ -1,11 +1,8 @@
 cbuffer SpriteCB : register(b0)
 {
     float2 ScreenSize;
-
     float2 Position;
-
     float4 SourceRect;
-
     float2 TextureSize;
 };
 
@@ -51,6 +48,10 @@ VSOutput vs_main(VSInput input)
 Texture2D SpriteTexture : register(t0);
 SamplerState SpriteSampler : register(s0);
 
+cbuffer _ : register(b1) {
+    float3 color;
+}
+
 
 float4 ps_main(VSOutput input) : SV_TARGET
 {
@@ -64,7 +65,8 @@ float4 ps_main(VSOutput input) : SV_TARGET
         (SourceRect.y + input.UV.y * SourceRect.w)
         / TextureSize.y;
 
-    float4 color = SpriteTexture.Sample(SpriteSampler, texUV);
-    color.a = color.r;
-    return color;
+    float4 out_color = SpriteTexture.Sample(SpriteSampler, texUV);
+    out_color.a = out_color.r;
+    out_color.rgb *= color;
+    return out_color;
 }

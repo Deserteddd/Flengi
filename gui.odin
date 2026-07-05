@@ -30,21 +30,22 @@ draw_imgui :: proc(scene: ^Scene) {
 	im_win32.NewFrame()
     im_d3d11.NewFrame()
     im.NewFrame()
-        if im.Begin("properties", nil, {.NoTitleBar, .NoResize, .NoMove}) {
-            defer im.End()
-            im.SetWindowPos({0, 0})
-            im.SetWindowSize({300, io.DisplaySize.y})
-            if im.BeginTabBar("PropertiesTabs") {
-                defer im.EndTabBar()
+    if im.Begin("Left panel", nil, {.NoTitleBar, .NoResize, .NoMove}) {
+        defer im.End()
+        im.SetWindowPos({0, 0})
+        im.SetWindowSize({300, io.DisplaySize.y})
+        if im.BeginTabBar("PropertiesTabs") {
+            defer im.EndTabBar()
 
-                // --- General Tab ---
-                if im.BeginTabItem("General") {
-                    defer im.EndTabItem()
-                    im.DragFloat("FOV", &g.player.fov, 1, 50, 140)
-                    im.DragFloat("Mouse sense", &g.mouse_sense, 0.001, 0.001, 0.1)
-                    if im.Button("Recompile shaders") do compile_shaders()
-                    fog := &g.renderer.options
-                    im.Checkbox("Fog", &fog.fog)
+            // --- General Tab ---
+            if im.BeginTabItem("General") {
+                defer im.EndTabItem()
+                im.DragFloat("FOV", &g.player.fov, 1, 50, 140)
+                im.DragFloat("Mouse sense", &g.mouse_sense, 0.001, 0.001, 0.1)
+                if im.Button("Recompile shaders") do compile_shaders()
+                fog := &g.renderer.options
+                im.Checkbox("Fog", &fog.fog)
+                if fog.fog {
                     im.DragFloat("Near", &fog.fog_start, 1, 0, 200)
                     if fog.fog_start > fog.fog_end {
                         fog.fog_end = fog.fog_start
@@ -53,94 +54,156 @@ draw_imgui :: proc(scene: ^Scene) {
                     if fog.fog_start > fog.fog_end {
                         fog.fog_start = fog.fog_end
                     }
-
-                    im.LabelText("", "Point Light")
-                    im.DragFloat("intensity", &g.renderer.p_light.power, 1, 0, 10000)
-                    im.ColorPicker3("color", &g.renderer.p_light.color, {.InputRGB})
                 }
+                im.Checkbox("Draw AABBs", &g.draw_aabbs)
+                im.LabelText("", "Point Light")
+                im.DragFloat("intensity", &g.renderer.p_light.power, 1, 0, 10000)
+                im.ColorPicker3("color", &g.renderer.p_light.color, {.InputRGB})
             }
         }
-		if im.Begin("entities", nil, {.NoTitleBar, .NoResize, .NoMove}) {
-            defer im.End()
-			rect := Rect{f32(io.DisplaySize.x)-300, 0, 300, f32(io.DisplaySize.y)}
+    }
+	if im.Begin("Right panel", nil, {.NoTitleBar, .NoResize, .NoMove}) {
+		rect := Rect{f32(io.DisplaySize.x)-300, 0, 300, f32(io.DisplaySize.y)}
+        im.SetWindowPos({io.DisplaySize.x-rect.w, 0})
+        im.SetWindowSize({rect.w, rect.h})
+        if im.BeginTabBar("##") {
+            defer im.EndTabBar()
+            selected_entity_index := -1
+            entities_tab(scene, rect, &selected_entity_index)
 
-            im.SetWindowPos({io.DisplaySize.x-rect.w, 0})
-            im.SetWindowSize({rect.w, rect.h})
-
-            selected_index := -1
-			im.LabelText("", "Entities")
-            if im.BeginListBox(" ", {rect.w-rect.w/10, rect.h/8}) {
-                for e, i in scene.entities {
-                    im.PushIDInt(i32(e.id))
-                    name_cstr := strings.unsafe_string_to_cstring(e.name)
-                    selected := e.id == g.selected
-                    if im.Selectable(name_cstr, selected) {
-                        g.selected = e.id
-                    }
-                    if selected {
-                        // im.ScrollToItem()
-                        selected_index = i
-                    }
-                    im.PopID()
-                }
-                im.EndListBox()
-            }
-            // Selected entity options
-            if selected_index != -1 && im.BeginChild("Lapsonen") {
-				im.Separator()
-                s := &scene.entities[selected_index]
-				im.LabelText("", "Physics")
-                im.DragFloat3("Position", &s.physics.position, 0.01)
-                im.DragFloat3("Scale",    &s.physics.scale, 0.01)
-				im.Separator()
-                if im.Button("Delete") {
-                    ok := remove_entity(scene, g.selected)
-                    assert(ok)
-                }
-                if im.Button("Duplicate") {
-                    index := entity_from_asset(scene, s.asset_name)
-                    offset := s.physics.aabb.min * 2 * s.physics.scale
-					scene.entities[index].physics = s.physics				
-					scene.entities[index].physics.position += {offset.x, 0, 0}
-					scene.entities[index].in_frustum = true
-					
-
-                    g.selected = scene.entities[index].id
-                }
-                im.LabelText("##", "Material overrides")
-                {
-                    enabled := .Color in s.material_overrides
-                    if im.Checkbox("Color", &enabled) {
-                        if enabled do s.material_overrides += {.Color}
-                        else do s.material_overrides -= {.Color}
-                    }
-                    if enabled do im.ColorEdit4("##", &s.override_values.color) 
-                }
-                {
-                    enabled := .Metallic in s.material_overrides
-                    if im.Checkbox("Metal", &enabled) {
-                        if enabled do s.material_overrides += {.Metallic}
-                        else do s.material_overrides -= {.Metallic}
-                    }
-                    if enabled do im.SliderFloat("##", &s.override_values.metallic, 0, 1); 
-                }
-                {
-                    enabled := .Roughness in s.material_overrides
-                    if im.Checkbox("Rough", &enabled) {
-                        if enabled do s.material_overrides += {.Roughness}
-                        else do s.material_overrides -= {.Roughness}
-                    }
-                    if enabled do im.SliderFloat("###", &s.override_values.roughness, 0, 1); 
-                }
-                im.EndChild()
-
-                for &axis in s.physics.scale do axis = max(0.01, axis)
-            }
-
+            selected_material_index := -1
+            materials_tab(scene, rect, &selected_material_index)
         }
 
-    im.Render()
-    im_draw_data := im.GetDrawData(); assert(im_draw_data != nil)
+        im.End()
+        im.Render()
+        im_draw_data := im.GetDrawData(); assert(im_draw_data != nil)
 
-	im_d3d11.RenderDrawData(im_draw_data)
+        im_d3d11.RenderDrawData(im_draw_data)
+    }
+}
+
+import "core:fmt"
+
+materials_tab :: proc(scene: ^Scene, rect: Rect, selected_material_index: ^int) {
+    if im.BeginTabItem("Materials") {
+        defer im.EndTabItem()
+        if im.BeginListBox(" ", {rect.w-rect.w/10, rect.h/8}) {
+            for ro, i in scene.renderables {
+                im.PushIDInt(i32(ro.materials.id))
+                name_cstr := strings.unsafe_string_to_cstring(fmt.aprintf("material-%v", ro.materials.id))
+                selected := ro.materials.id == g.selected_material
+                if im.Selectable(name_cstr, selected) {
+                    g.selected_material = ro.materials.id
+                }
+                if selected {
+                    // im.ScrollToItem()
+                    selected_material_index^ = i
+                }
+                im.PopID()
+            }
+            im.EndListBox()
+        }
+        // Selected material options
+        if selected_material_index^ != -1 && im.BeginChild("Lapsonen") {
+            update_params_buff: bool
+            defer im.EndChild()
+            im.Separator()
+            s := &scene.renderables[selected_material_index^]
+            im.LabelText("", "Physics")
+
+            im.Separator()
+            if im.Button("Delete") {
+                ok := remove_entity(scene, g.selected_entity)
+                assert(ok)
+            }
+
+            im.LabelText("##", "Params")
+            
+            base_color := &s.materials.params[0].base_color_factor
+            if im.ColorPicker4("Base color", base_color) {
+                update_params_buff = true
+            } 
+
+            if update_params_buff {
+                rd.destroy(s.materials.params_buffer)
+                s.materials.params_buffer = rd.create_structured_buffer(s.materials.params, {.Pixel})
+            } 
+        }
+    }
+}
+
+entities_tab :: proc(scene: ^Scene, rect: Rect, selected_entity_index: ^int) {
+    // Entities Tab
+    if im.BeginTabItem("Entities") {
+        defer im.EndTabItem()
+
+        if im.BeginListBox(" ", {rect.w-rect.w/10, rect.h/8}) {
+            for e, i in scene.entities {
+                im.PushIDInt(i32(e.id))
+                name_cstr := strings.unsafe_string_to_cstring(e.name)
+                selected := e.id == g.selected_entity
+                if im.Selectable(name_cstr, selected) {
+                    g.selected_entity = e.id
+                }
+                if selected {
+                    // im.ScrollToItem()
+                    selected_entity_index^ = i
+                }
+                im.PopID()
+            }
+            im.EndListBox()
+        }
+        // Selected entity options
+        if selected_entity_index^ != -1 && im.BeginChild("Lapsonen") {
+            defer im.EndChild()
+            im.Separator()
+            s := &scene.entities[selected_entity_index^]
+            im.LabelText("", "Physics")
+            im.DragFloat3("Position", &s.physics.position, 0.01)
+            im.DragFloat3("Scale",    &s.physics.scale, 0.01)
+            im.Separator()
+            if im.Button("Delete") {
+                ok := remove_entity(scene, g.selected_entity)
+                assert(ok)
+            }
+            if im.Button("Duplicate") {
+                index := entity_from_asset(scene, s.asset_name)
+                offset := s.physics.aabb.min * 2 * s.physics.scale
+                scene.entities[index].physics = s.physics				
+                scene.entities[index].physics.position += {offset.x, 0, 0}
+                scene.entities[index].in_frustum = true
+                    
+
+                g.selected_entity = scene.entities[index].id
+            }
+            im.LabelText("##", "Material overrides")
+            {
+                enabled := .Color in s.material_overrides.attributes
+                if im.Checkbox("Color", &enabled) {
+                    if enabled do s.material_overrides.attributes += {.Color}
+                    else do s.material_overrides.attributes -= {.Color}
+                }
+                if enabled do im.ColorEdit4("##", &s.material_overrides.color) 
+            }
+            {
+                enabled := .Metallic in s.material_overrides.attributes
+                if im.Checkbox("Metal", &enabled) {
+                    if enabled do s.material_overrides.attributes += {.Metallic}
+                    else do s.material_overrides.attributes -= {.Metallic}
+                }
+                if enabled do im.SliderFloat("##", &s.material_overrides.metallic, 0, 1); 
+            }
+            {
+                enabled := .Roughness in s.material_overrides.attributes
+                if im.Checkbox("Rough", &enabled) {
+                    if enabled do s.material_overrides.attributes += {.Roughness}
+                    else do s.material_overrides.attributes -= {.Roughness}
+                }
+                if enabled do im.SliderFloat("###", &s.material_overrides.roughness, 0, 1); 
+            }
+
+            for &axis in s.physics.scale do axis = max(0.01, axis)
+        }
+    }
 }

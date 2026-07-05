@@ -16,15 +16,17 @@ Entity :: struct {
     renderable: ^Renderable,
     mesh:       ^Mesh,
     
-    material_overrides: bit_set[MaterialAttribute; u32],
-    override_values: struct {
+    material_overrides: struct {
         color: vec4,
         metallic: f32,
         roughness: f32,
+        attributes: bit_set[MaterialAttribute; u32],
     },
     physics:    Physics,
     in_frustum: bool
 }
+
+MaterialID :: distinct u32
 
 MaterialAttribute :: enum {
     Color,
@@ -32,11 +34,17 @@ MaterialAttribute :: enum {
     Roughness,
 }
 
+MaterialCollection :: struct {
+    id:             MaterialID,
+    params:         []Material,
+    params_buffer:  rd.StructuredBuffer,
+    textures:       rd.TextureBuffer,
+}
+
 Renderable :: struct {
     vbo:            rd.VertexBuffer,
     ibo:            rd.IndexBuffer,
-    materials:      rd.StructuredBuffer,
-    textures:       rd.TextureBuffer,
+    materials:      MaterialCollection,
     aabb:           rd.VertexBuffer,
     primitives:     []Primitive,
 }

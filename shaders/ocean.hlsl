@@ -98,7 +98,7 @@ Output vs_main(Input input) {
     float3 normal = 0.2 * normalize(cross(bitangent, tangent));
 
     float4 worldPosition = float4(pos, 1);
-    worldPosition.xz += player_position;
+    // worldPosition.xz += player_position;
     output.clip_position = mul(vp, worldPosition);
     output.world_position = worldPosition.xyz;
     output.normal = normalize(float3(0, 1, 0) + normal);

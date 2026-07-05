@@ -71,13 +71,13 @@ cbuffer FragUBO : register(b0) {
 
 cbuffer MaterialID : register(b1) {
     uint material_id;
-    uint material_overrides;
 }
 
 cbuffer MaterialOverrides : register(b2) {
     float4 color_override;
     float metallic_override;
     float roughness_override;
+    uint material_overrides;
 }
 
 #define PI 3.14159265
@@ -129,10 +129,10 @@ float3 get_normal(Output input, uint normal_tex) {
 float4 ps_main(Output input, bool is_front_face : SV_IsFrontFace) : SV_Target {
     Material mat = materials[material_id];
     float4 base_color = mat.base_color_factor;
+    if (CHECK_BIT(material_overrides, 0)) base_color = color_override;
     if (mat.base_color_tex != NO_TEX) {
         base_color *= tex_array.Sample(samp, float3(input.uv, mat.base_color_tex));
     }
-    if (CHECK_BIT(material_overrides, 0)) base_color = color_override;
 
     if (mat.alpha_mode == 1) {
         clip(base_color.a - mat.alpha_cutoff);
@@ -202,6 +202,5 @@ float4 ps_main(Output input, bool is_front_face : SV_IsFrontFace) : SV_Target {
     color = color / (color + 1.0);
 
     color = pow(color, 1.0 / 2.2);
-
     return float4(color, base_color.a);
 }

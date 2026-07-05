@@ -21,6 +21,12 @@ Output vs_main(Input input) {
     return output;
 }
 
+cbuffer _ : register(b1) {
+    bool selected;
+}
+
 float4 ps_main(Output input) : SV_Target {
+    if (selected)
+        return float4(1, 1, 0, 1);
     return float4(0, 1, 1, 1);
 }

@@ -2,17 +2,17 @@ package obj_viewer
 
 import "core:log"
 import "core:time"
-import "core:os"
+import "core:fmt"
 import lg "core:math/linalg"
 import rd "../Redef"
 import im "shared:imgui"
 
-DEBUG_DRAW :: false
 
 g := struct {
     player:         Player,
     renderer:       Renderer,
-    selected:       EntityID,
+    selected_entity:       EntityID,
+    selected_material:     MaterialID,
     frame:          uint,
     ui_context:     ^im.Context, 
     mouse_sense,
@@ -23,6 +23,7 @@ g := struct {
     vsync,
     fullscreen,
     running: bool,
+    draw_aabbs: bool,
 
 } {
     mouse_sense = 0.04,
@@ -59,16 +60,17 @@ init :: proc() {
 
 run :: proc(scene: ^Scene) {
     now := time.now()
+    fps: f64 = 60
     main_loop: for {
         defer {
             free_all(context.temp_allocator)
             g.frame += 1
             g.lmb_click = false
             g.rmb_click = false
-            // if g.frame % 100 == 0 {
-            //     log.info(1000/(time.duration_milliseconds(time.since(now))/100))
-            //     now = time.now()
-            // }
+            if g.frame % 20 == 0 {
+                fps = 1000/(time.duration_milliseconds(time.since(now))/20)
+                now = time.now()
+            }
         }
         g.dt = f32(rd.get_dt() / 1000)
         for event in rd.pump_event_iter(){
@@ -115,6 +117,8 @@ run :: proc(scene: ^Scene) {
         rd.clear()
         draw_scene(scene)
         post_process()
+        if g.draw_aabbs do draw_aabbs(scene)
+        draw_text(fmt.aprintf("%v", i32(fps)), 0, ._12, {0, 1, 0})
         if !g.running do draw_imgui(scene)
         else do draw_sprite(g.renderer.crosshair)
         rd.frame_end()
@@ -139,9 +143,9 @@ update :: proc(scene: ^Scene) -> (exit: bool) {
                 }
             }
             if closest_entity != 0 {
-                g.selected = closest_entity
+                g.selected_entity = closest_entity
             } else {
-                g.selected = 0
+                g.selected_entity = 0
             }
         }
         return
