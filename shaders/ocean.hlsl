@@ -122,6 +122,10 @@ float4 ps_main(Output input) : SV_Target0 {
     R.y *= -1;
     float3 env = srgb_to_linear(cubeMap.Sample(cubeSmp, R).rgb);
 
+    float distance = length(light_pos - input.world_position);
+    float attenuation = 1.0 / max(distance * distance, 0.001);
+    float3 radiance = light_color * light_intensity * attenuation;
+
     float3 deep_color = float3(0.005, 0.02, 0.04);
     float fresnel = pow(1.0 - saturate(dot(N, V)), 5.0);
     float3 F0 = float3(0.02, 0.02, 0.02);
@@ -130,7 +134,7 @@ float4 ps_main(Output input) : SV_Target0 {
     float rough = saturate(0.06 + 0.18 * (1.0 - saturate(dot(N, V))));
     env = lerp(env, deep_color, rough);
 
-    float3 color = deep_color * (1.0 - F) + env * F;
+    float3 color = deep_color * (1.0 - F) + env * F + radiance;
 
     color = color / (color + 1.0);
     color = pow(color, 1.0 / 2.2);

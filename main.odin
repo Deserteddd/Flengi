@@ -9,21 +9,21 @@ import im "shared:imgui"
 
 
 g := struct {
-    player:         Player,
-    renderer:       Renderer,
-    selected_entity:       EntityID,
-    selected_material:     MaterialID,
-    frame:          uint,
-    ui_context:     ^im.Context, 
+    player:         		Player,
+    renderer:       		Renderer,
+    selected_entity:       	EntityID,
+    selected_material:     	MaterialID,
+    frame:          		uint,
+    ui_context:     		^im.Context,
     mouse_sense,
-    dt:             f32,
-    time:           time.Time,
+    dt:             		f32,
+    time:           		time.Time,
     lmb_click,
     rmb_click,
     vsync,
     fullscreen,
-    running: bool,
-    draw_aabbs: bool,
+    running: 				bool,
+    draw_aabbs: 			bool,
 
 } {
     mouse_sense = 0.04,
@@ -128,10 +128,10 @@ run :: proc(scene: ^Scene) {
 update :: proc(scene: ^Scene) -> (exit: bool) {
     if !g.running {
         if g.lmb_click {
-            mx, my := rd.get_mouse_position()
+            mpos := rd.get_mouse_position()
             win_size := rd.get_window_size()
-            if mx < 300 || mx > win_size.x - 300 do return // Check click in viewport
-            ray_origin, ray_dir := ray_from_screen({mx, my}, win_size)
+            if mpos.x < 300 || mpos.x > win_size.x - 300 do return // Check click in viewport
+            ray_origin, ray_dir := ray_from_screen(mpos, win_size)
             closest_hit: f32 = max(f32)
             closest_entity: EntityID
             for &entity in scene.entities {
@@ -171,7 +171,6 @@ update :: proc(scene: ^Scene) -> (exit: bool) {
     closest_entity_index := -1
     found_collision: bool
     airborne_at_start := p.airborne
-
 
     for &entity, i in scene.entities {
         //Rotate
@@ -227,10 +226,10 @@ update :: proc(scene: ^Scene) -> (exit: bool) {
 }
 
 update_camera :: proc() {
-    x, y := rd.get_relative_mouse_movement()
-    x *= g.mouse_sense
-    y *= g.mouse_sense
-    g.player.rotation.y += x
-    g.player.rotation.x = lg.min(g.player.rotation.x + y, 90)
+    mouse_move := rd.get_relative_mouse_movement()
+    mouse_move.x *= g.mouse_sense
+    mouse_move.y *= g.mouse_sense
+    g.player.rotation.y += mouse_move.x
+    g.player.rotation.x = lg.min(g.player.rotation.x + mouse_move.y, 90)
     if g.player.rotation.x < -90 do g.player.rotation.x = -90
 }

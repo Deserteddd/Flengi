@@ -65,12 +65,12 @@ float3 ReconstructViewPos(float2 uv, float depth)
     ndc.x = uv.x * 2.0f - 1.0f;
     ndc.y = (1.0f - uv.y) * 2.0f - 1.0f;
 
-    float ndc_depth = depth; 
+    float ndc_depth = depth;
 
     float4 clip = float4(ndc.x, ndc.y, ndc_depth, 1.0f);
 
     float4 view = mul(invProjectionMat, clip);
-    
+
     if (abs(view.w) > 0.000001f)
     {
         view /= view.w;
