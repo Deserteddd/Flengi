@@ -15,7 +15,7 @@ Entity :: struct {
     asset_name: string,
     renderable: ^Renderable,
     mesh:       ^Mesh,
-    
+
     material_overrides: struct {
         color: vec4,
         metallic: f32,
@@ -60,7 +60,10 @@ Physics :: struct {
     scale,
     speed: vec3,
     rotation: quaternion128,
-    aabb: AABB
+    aabb: AABB,
+    b3: struct {
+
+    }
 }
 
 Mesh :: struct {

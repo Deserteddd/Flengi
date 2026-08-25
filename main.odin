@@ -7,10 +7,13 @@ import lg "core:math/linalg"
 import rd "../Redef"
 import im "shared:imgui"
 
+import b3 "vendor:box3d"
+
 
 g := struct {
     player:         		Player,
     renderer:       		Renderer,
+    world:					World,
     selected_entity:       	EntityID,
     selected_material:     	MaterialID,
     frame:          		uint,
@@ -52,7 +55,9 @@ init :: proc() {
 
     init_renderer()
     init_imgui()
+    init_physics()
 
+    add_player()
     rd.set_vsync(g.vsync)
     g.player.fov = 90
     g.time = time.now()
